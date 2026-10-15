@@ -2,12 +2,50 @@
 # victoria3.exe. You start the game first (Steam as usual), LOAD your save,
 # PAUSE the game, then double-click "INJECT HOOKS.cmd". Prints the install
 # verdict; never closes on its own — the .cmd wrapper keeps the window open.
-# Personal use only.
+# On launch (unless -SkipUpdate) it checks the GitHub release repo for a
+# newer kit version; a downloaded update is applied by apply_update.ps1
+# when the injector window closes, preserving vic3hook.ini customizations.
+param([switch]$SkipUpdate)
 $ErrorActionPreference = 'Stop'
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DllFull = Join-Path $here 'vic3hook.dll'
 if (-not (Test-Path $DllFull)) { throw "vic3hook.dll not found next to this script." }
+
+# --- 0. update check against the GitHub release repo -------------------------
+function Invoke-UpdateCheck {
+    $local = '0'
+    $vf = Join-Path $here 'version.txt'
+    if (Test-Path $vf) { $local = (Get-Content $vf -First 1).Trim() }
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/CrimsonBolt/Vic3-Performance-Hooks/releases/latest' `
+            -Headers @{ 'User-Agent' = 'vic3hook-update-check' } -TimeoutSec 5
+    } catch { return }  # offline or blocked: run what we have, silently
+    $verAsset = $rel.assets | Where-Object { $_.name -eq 'version.txt' } | Select-Object -First 1
+    if (-not $verAsset) { return }
+    $remote = ''
+    try { $remote = (Invoke-WebRequest -Uri $verAsset.browser_download_url -UseBasicParsing -TimeoutSec 10).Content.Trim() } catch { return }
+    try { $lvo = [version]$local } catch { $lvo = [version]'0' }
+    try { $rvo = [version]$remote } catch { return }
+    if ($rvo -le $lvo) { return }
+    $zipAsset = $rel.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
+    if (-not $zipAsset) { return }
+    Write-Output ("update available: kit {0} (this kit: {1}) - downloading..." -f $remote, $local)
+    $upd = Join-Path $here 'update'
+    New-Item -ItemType Directory -Path $upd -Force | Out-Null
+    $zipPath = Join-Path $upd 'Vic3-Performance-Hooks.zip'
+    try {
+        Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipPath -UseBasicParsing -TimeoutSec 60
+        if ((Get-Item $zipPath).Length -lt 10000) { throw 'downloaded file too small' }
+        Expand-Archive -Path $zipPath -DestinationPath (Join-Path $upd 'staged') -Force
+        Write-Output 'update staged - it applies automatically when this window closes.'
+    } catch {
+        Write-Output ("update download failed ({0}) - continuing with the current kit." -f $_.Exception.Message)
+        Remove-Item $upd -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+if (-not $SkipUpdate) { Invoke-UpdateCheck }
 
 # --- 1. the game must already be running ------------------------------------
 $game = Get-Process -Name 'victoria3' -ErrorAction SilentlyContinue | Select-Object -First 1

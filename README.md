@@ -103,6 +103,14 @@ Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick
 > [!NOTE]
 > **Going back to vanilla:** just don't run the script. Restarting the game also fully reverts.
 
+## Updating
+
+On every launch the kit checks this repo's latest GitHub release (HTTPS, 5-second timeout, **silent if offline**). If a newer version is published, the new kit is downloaded and applied automatically when the injector window closes — **your `vic3hook.ini` customizations are preserved** (values kept, newly added hook keys merged in with their defaults). To skip the check for a run, double-click with `-SkipUpdate` appended, or call the script directly:
+
+```powershell
+powershell -File inject_running.ps1 -SkipUpdate
+```
+
 ---
 
 ## Tuning
