@@ -74,7 +74,7 @@ Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick
 | 1891 | ~28 ms *(extrapolated)* | **14.70 ms** |
 | 1895 | — | **13.71 ms** |
 
-> [!TIP]
+> [!NOTE]
 > **By 1895, the daily sim costs what the unhooked 1860 game did — roughly 35 years of late-game slowdown reclaimed.**
 
 *Methodology note: the numbers are based on pretty much random fresh autosaves (every test was a fresh game on observer mode, and some AI tweaks happened between runs), so they don't have perfectly matching hooked and unhooked results.*
