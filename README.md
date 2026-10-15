@@ -44,12 +44,14 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 
 | Task | Every Nth | What it is |
 |---|:---:|---|
-| `RecalculateModifierNodes` | 5 | modifier-graph recalculation — the single biggest late-game cost |
-| `UpdateBuildingSpendingPriorities_Stage2` | 10 | building spending priorities |
+| `RecalculateModifierNodes` | 2 | modifier-graph recalculation — the single biggest late-game cost |
+| `UpdateBuildingSpendingPriorities_Stage2` | 2 | building spending priorities |
 | `PrepareNavyAIData` | 2 | navy AI data prep |
 | `UpdateAI` | 2 | country AI update |
-| `HandleAutonomousInvestment` | 5 | AI autonomous investment |
-| `UpdateSpendingVariables` | 5 | spending-variables refresh |
+| `HandleAutonomousInvestment` | 2 | AI autonomous investment |
+| `UpdateSpendingVariables` | 2 | spending-variables refresh |
+
+All six run every tick in vanilla; the default profile throttles each to **every other tick** — the gentlest setting (kit 1.14.5.3). More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
 
 Profiled as the next candidates, not yet shipped: pop growth, economic migration, world market, state trades, pop-need cache, AI country goals.
 
@@ -63,8 +65,8 @@ Profiled as the next candidates, not yet shipped: pop growth, economic migration
 
 ## Known issues
 
-- **In long campaigns, some wars may never end.** Being fixed — an update with corrected hook cadences is in the works. Until then, setting `RecalculateModifierNodes_every_n=2` (or `0`) in `vic3hook.ini` avoids it for new campaigns.
-- **At the default settings, the AI builds a somewhat smaller economy over a full campaign.** Being fixed in the same update; lowering `HandleAutonomousInvestment_every_n` and `UpdateBuildingSpendingPriorities_Stage2_every_n` to `2`–`3` (or `0`) in `vic3hook.ini` reduces it in the meantime.
+- **In long campaigns, some wars may never end.** Being worked on. The defaults are now conservative (every other tick, kit 1.14.5.3); if you still see it, set `RecalculateModifierNodes_every_n=0` in `vic3hook.ini`.
+- **At aggressive settings, the AI builds a smaller economy over a full campaign.** Being worked on. The defaults are now conservative (kit 1.14.5.3); lowering any hook's `_every_n` toward `1`/`0` in `vic3hook.ini` moves it closer to vanilla.
 
 ---
 
