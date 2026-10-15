@@ -59,7 +59,7 @@ Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick
 | 1837 | 9.95 ms | 7.87 ms *(control test)* |
 | 1860 | 13.14 ms | — |
 | 1880 | 16.87 ms | — |
-| 1890 | **26.49 ms** ← the knee | — |
+| 1890 | **26.49 ms** | — |
 | 1891 | ~28 ms *(extrapolated)* | **14.70 ms** |
 | 1895 | — | **13.71 ms** |
 
