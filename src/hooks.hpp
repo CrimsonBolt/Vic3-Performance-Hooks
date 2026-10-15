@@ -33,4 +33,9 @@ void hooks_set_cadence(const char* name, unsigned n);
 // full-fidelity days un-stuck frozen wars that had persisted for decades.
 // 0 disables the resync.
 void hooks_set_vanilla_day_period(unsigned days);
+// 0 = write GameStateTick.RenderFrameIfNeeded to 0 in the game image (same
+// effect as launching with -disable_renderframeifneeded: sub-tick rendering
+// is sacrificed for tick speed; sim results unaffected). Nonzero = leave the
+// game's default (1) alone. Bounds-checked write, logged.
+bool hooks_apply_render_frame_option(void* game_base, int enabled);
 void hooks_shutdown();
