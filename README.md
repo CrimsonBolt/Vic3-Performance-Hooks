@@ -15,6 +15,7 @@
 
 - [How it works](#how-it-works)
 - [Gameplay impacts](#gameplay-impacts)
+- [Known issues](#known-issues)
 - [Results](#results)
 - [Install](#install)
 - [Tuning](#tuning)
@@ -56,9 +57,16 @@ Profiled as the next candidates, not yet shipped: pop growth, economic migration
 
 ## Gameplay impacts
 
-- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world drifts slightly from what vanilla would have done — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule.
+- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world develops differently than vanilla — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule. At the default cadences this drift is **large over a full campaign** (measured: a same-seed hooked world ended 1930 with ~64% of vanilla's global GDP — see [Known issues](#known-issues)).
 - **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
 - **Workshop mods:** this hooks the engine's tick tasks, not game data, so it should work alongside regular Workshop mods — but I haven't tested compatibility with any particular mod.
+
+## Known issues
+
+Both findings below come from a controlled experiment: two hands-off observer campaigns, **same RNG seed**, identical settings, 1840–1930. Fixes are in progress for a future kit version.
+
+- **Wars can stop resolving in long campaigns.** The hooked world accumulated 19 wars frozen mid-resolution (some running 50+ years with war support pinned at zero); the same-seed vanilla world had **zero** stuck wars (oldest conflict at snapshot: 2 years). The cause is narrowed to one of the throttled tasks — modifier recalculation (`1/5`) or country AI (`1/2`) — and a bisect is planned to isolate it. **Mitigation if it bites you:** set `RecalculateModifierNodes_every_n=2` (milder) or `0` (off) in `vic3hook.ini` for new campaigns.
+- **The default cadences build a smaller economy.** Same-seed comparison at 1930: ~64% of vanilla's global GDP, ~85% of its workforce, ~71% of its building mass. The throttled autonomous investment (`1/5`) and building priorities (`1/10`) are the main drivers — the AI simply builds less on a slower clock. **If you want a closer-to-vanilla world**, raise those cadences (e.g. `2`–`3`) or disable those two hooks; you keep most of the speed benefit from the modifier and AI hooks either way.
 
 ---
 
