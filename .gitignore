@@ -1,0 +1,11 @@
+# build output
+build/
+.vs/
+*.pdb
+*.obj
+*.idb
+*.ilk
+
+# binaries ship via GitHub Releases, not the repo tree
+vic3hook.dll
+*.zip
