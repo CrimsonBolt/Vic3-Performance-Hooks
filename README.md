@@ -3,8 +3,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.14.5-8e44ad.svg)](#building-from-source)
 [![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#install)
+[![Download - Releases](https://img.shields.io/badge/download-GitHub%20Releases-brightgreen.svg)](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
 
 **Reclaim late-game simulation speed in Victoria 3** by letting a handful of expensive engine tick-tasks run every Nth call instead of every call — with no changes to game files and no changes to how the game computes anything.
+
+> [!TIP]
+> ### ➤ [Download the latest release here](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
+> Unzip it anywhere — no build, no install. Then see [Install](#install) for the 3-step usage.
+> The kit checks for updates automatically on every launch.
 
 > [!IMPORTANT]
 > **When a task runs, it runs 100% unmodified.** No number is ever computed differently — some caches and AI decisions just refresh a few days later than vanilla.
