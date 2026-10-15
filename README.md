@@ -58,6 +58,7 @@ Profiled as the next candidates, not yet shipped: pop growth, economic migration
 
 - **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world drifts slightly from what vanilla would have done — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule.
 - **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
+- **Workshop mods:** this hooks the engine's tick tasks, not game data, so it should work alongside regular Workshop mods — but I haven't tested compatibility with any particular mod.
 
 ---
 
