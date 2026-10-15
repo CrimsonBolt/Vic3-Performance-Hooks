@@ -45,16 +45,17 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 - Every hook verifies the target function's bytes before patching; on any mismatch it **disables itself instead of patching** (fail closed).
 - If the game updates, the worst case is a vanilla-speed session and a log entry.
 
-**Shipped hooks** (each runs every Nth call):
+**Shipped hooks** (each throttled to every other tick):
 
-| Task | Every Nth | What it is |
-|---|:---:|---|
-| `RecalculateModifierNodes` | 2 | modifier-graph recalculation — the single biggest late-game cost |
-| `UpdateBuildingSpendingPriorities_Stage2` | 2 | building spending priorities |
-| `PrepareNavyAIData` | 2 | navy AI data prep |
-| `UpdateAI` | 2 | country AI update |
-| `HandleAutonomousInvestment` | 2 | AI autonomous investment |
-| `UpdateSpendingVariables` | 2 | spending-variables refresh |
+| Task | What it is |
+|---|---|
+| `UpdateBuildingSpendingPriorities_Stage2` | building spending priorities |
+| `HandleAutonomousInvestment` | AI autonomous investment |
+| `PrepareNavyAIData` | navy AI data prep |
+| `UpdateAI` | country AI update |
+| `UpdateSpendingVariables` | spending-variables refresh |
+
+`RecalculateModifierNodes` — the single biggest late-game cost — is **deliberately not throttled**: skipping it defers modifier invalidations, which silently breaks one-shot decisions (diplomatic deals that show 100% valid but never apply). Isolated and confirmed via same-save A/B testing; leave it at `0` in the ini.
 
 All six run every tick in vanilla; the default profile throttles each to **every other tick** — the gentlest setting. More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
 
