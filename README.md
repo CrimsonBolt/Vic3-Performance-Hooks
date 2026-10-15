@@ -57,11 +57,20 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 
 `RecalculateModifierNodes` — the single biggest late-game cost — is **deliberately not throttled**: skipping it defers modifier invalidations, which silently breaks one-shot decisions (diplomatic deals that show 100% valid but never apply). Isolated and confirmed via same-save A/B testing; leave it at `0` in the ini.
 
-All six run every tick in vanilla; the default profile throttles each to **every other tick** — the gentlest setting. More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
+**Experimental hooks** (in the ini, shipped at `0` = vanilla — flip to `2` to try them):
+
+| Task | What it is | Why it's considered safe to skip |
+|---|---|---|
+| `ProcessEconomicMigration` | pop migration processing | migration is a queue — a skipped day just delays it, nothing is lost |
+| `UpdateAICountryGoalsAdjustments` | AI country-goal adjustment | carries a progress cursor; a skipped call simply continues next time |
+
+Both were verified skip-safe by reading the engine code, not just by playtesting; expect roughly 1–2 ms/tick back late game at `every_n=2`.
+
+**Engine switch** (ini, default `1` = game default): `render_frame_if_needed=0` applies Victoria 3's own `-disable_renderframeifneeded` launch-flag behavior (console cvar `GameStateTick.RenderFrameIfNeeded`) — sub-tick rendering is sacrificed for tick speed. Sim results are unaffected; the UI may feel less smooth at high speed. Takes effect on injection; setting it back to `1` needs a game restart.
+
+All throttled tasks run every tick in vanilla; the default profile throttles each to **every other tick** — the gentlest setting. More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
 
 **The weekly "vanilla day":** every 7th day, *all* throttled tasks run at full fidelity for that one day. The engine schedules some systems on fixed day-phases (every 4th day, monthly), and a fixed skip pattern can phase-lock against them — the vanilla day re-synchronizes everything, which keeps war resolution and AI construction behaving normally. Same-seed testing confirmed both the problem (wars could freeze under constant skipping) and the fix (zero freezes with the weekly resync, verified across decades). Tunable via `vanilla_day_every_n_days` in the ini.
-
-Profiled as the next candidates, not yet shipped: economic migration, job satisfaction.
 
 ---
 
@@ -114,7 +123,7 @@ Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick wi
 
 | Message | Meaning |
 |---|---|
-| `6/6 hooks installed` | Active — unpause and play on. |
+| `N/M hooks installed` | Active — unpause and play on. (Shipped defaults: 6 of 8; the two experimental ones and `RecalculateModifierNodes` are disabled by config.) |
 | `WRONG GAME VERSION` | No hook matched the game build — nothing was patched, you're on pure vanilla. |
 | `PARTIAL VERSION MISMATCH` | Some hooks installed and are active, others failed their byte check — the game is **not** vanilla. Restart without injecting for pure vanilla. |
 
