@@ -21,7 +21,6 @@
 
 - [How it works](#how-it-works)
 - [Gameplay impacts](#gameplay-impacts)
-- [Known issues](#known-issues)
 - [Results](#results)
 - [Install](#install)
 - [Tuning](#tuning)
@@ -57,21 +56,19 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 | `HandleAutonomousInvestment` | 2 | AI autonomous investment |
 | `UpdateSpendingVariables` | 2 | spending-variables refresh |
 
-All six run every tick in vanilla; the default profile throttles each to **every other tick** — the gentlest setting (kit 1.14.5.3). More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
+All six run every tick in vanilla; the default profile throttles each to **every other tick** — the gentlest setting. More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
 
-Profiled as the next candidates, not yet shipped: pop growth, economic migration, world market, state trades, pop-need cache, AI country goals.
+**The weekly "vanilla day":** every 7th day, *all* throttled tasks run at full fidelity for that one day. The engine schedules some systems on fixed day-phases (every 4th day, monthly), and a fixed skip pattern can phase-lock against them — the vanilla day re-synchronizes everything, which keeps war resolution and AI construction behaving normally. Same-seed testing confirmed both the problem (wars could freeze under constant skipping) and the fix (zero freezes with the weekly resync, verified across decades). Tunable via `vanilla_day_every_n_days` in the ini.
+
+Profiled as the next candidates, not yet shipped: economic migration, job satisfaction.
 
 ---
 
 ## Gameplay impacts
 
-- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world develops differently than vanilla — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule. Over a full campaign the differences add up (see [Known issues](#known-issues)).
+- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world develops differently than vanilla — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule. The weekly vanilla day keeps the differences mild at the default settings.
 - **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
 - **Workshop mods:** this hooks the engine's tick tasks, not game data, so it should work alongside regular Workshop mods — but I haven't tested compatibility with any particular mod.
-
-## Known issues
-
-- ~~**In long campaigns, some wars may never end.**~~ **Fixed in kit 1.14.5.4** — a scheduled "vanilla day" (one day per week where every throttled task runs at full fidelity) keeps war resolution alive. Diagnosed via a same-seed A/B: wars froze under any skipping and un-stuck within days of full-fidelity ticks.
 
 ---
 
@@ -145,6 +142,8 @@ Open `vic3hook.ini` and set any task's `_every_n` value:
 | `0` | Off — task runs every call (fully vanilla) |
 | `1` | Always run (passthrough) |
 | `N` | Work on every Nth call |
+
+`vanilla_day_every_n_days` controls the scheduled full-fidelity day (default `7` = once a week; `0` disables it). Don't disable it unless you know what you're trading away — it's what keeps day-phased AI systems in sync.
 
 > [!TIP]
 > Changes apply **within 5 seconds** while the game runs — no restart needed. Turning a hook on from `0` installs it live (byte-verified, same as at injection); turning one off (`N` → `0`) makes it pass through immediately.
