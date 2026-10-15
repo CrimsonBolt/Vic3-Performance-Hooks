@@ -14,11 +14,11 @@
 ## Contents
 
 - [How it works](#how-it-works)
+- [Gameplay impacts](#gameplay-impacts)
 - [Results](#results)
 - [Install](#install)
 - [Tuning](#tuning)
 - [Troubleshooting](#troubleshooting)
-- [Honest caveats](#honest-caveats)
 - [Building from source](#building-from-source)
 - [License](#license)
 
@@ -49,6 +49,11 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 | `UpdateSpendingVariables` | 5 | spending-variables refresh |
 
 Profiled as the next candidates, not yet shipped: pop growth, economic migration, world market, state trades, pop-need cache, AI country goals.
+
+## Gameplay impacts
+
+- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world drifts slightly from what vanilla would have done — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule.
+- **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
 
 ## Results
 
@@ -99,11 +104,6 @@ Open `vic3hook.ini` and set any task's `_every_n` value — changes apply **with
 
 - **Game misbehaves after tuning** → set that task's `every_n=0` in the ini, or delete the folder — the game itself is never modified.
 - **Re-injecting after a game restart** → run `INJECT HOOKS.cmd` again (load save, pause, inject).
-
-## Honest caveats
-
-- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world drifts slightly from what vanilla would have done — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule.
-- **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
 
 ## Building from source
 
