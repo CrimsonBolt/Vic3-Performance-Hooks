@@ -72,21 +72,31 @@ Profiled as the next candidates, not yet shipped: pop growth, economic migration
 
 ## Results
 
-Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick windows, patch 1.14.5.
+Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick windows, patch 1.14.5). **Vanilla baseline** from one complete hands-off observer campaign, 1840–1930 — **hooked-run testing with the current cadences is in progress** and will be added.
 
-| Year | Unhooked | Hooked |
-|:---:|---:|---:|
-| 1837 | 9.95 ms | 7.87 ms *(control test)* |
-| 1860 | 13.14 ms | — |
-| 1880 | 16.87 ms | — |
-| 1890 | **26.49 ms** | — |
-| 1891 | ~28 ms *(extrapolated)* | **14.70 ms** |
-| 1895 | — | **13.71 ms** |
+| Year | Vanilla |
+|:---:|---:|
+| 1840 | 6.95 ms |
+| 1850 | 11.19 ms |
+| 1860 | 13.57 ms |
+| 1870 | 12.88 ms |
+| 1880 | 13.17 ms |
+| 1890 | 14.29 ms |
+| 1900 | 17.09 ms |
+| 1910 | 20.19 ms |
+| 1920 | 25.56 ms |
+| 1930 | **31.09 ms** |
 
 > [!NOTE]
-> **By 1895, the daily sim costs what the unhooked 1860 game did — roughly 35 years of late-game slowdown reclaimed.**
+> **Vanilla more than quadruples over a campaign — the 1900s onward is where it compounds (+3, +5.4, +5.5 ms per decade).**
 
-*Methodology note: the numbers are based on pretty much random fresh autosaves (every test was a fresh game on observer mode, and some AI tweaks happened between runs), so they don't have perfectly matching hooked and unhooked results.*
+### Methodology
+
+- Hands-off **observer mode**, no player input, one continuous session per run
+- **Medium** graphics settings, **FPS capped at 60**, maximum zoom-out level
+- Fixed **RNG seed** per campaign (so runs are reproducible and comparable)
+- Game version 1.14.5 (rev `9f8281a3`); measured with the game's own `dump_ticktask_timings` console command
+- Test machine: AMD Ryzen 7 9800X3D (8C/16T), RTX 5070 Ti, 96 GB RAM, Windows 11
 
 ---
 
