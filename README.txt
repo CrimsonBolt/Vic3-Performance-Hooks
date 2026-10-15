@@ -1,6 +1,9 @@
 vic3hook — perf hook for Victoria 3 1.14.5 (personal use only)
 
-USE:     1. Start Victoria 3 through Steam as usual.
+USE:     
+Unzip into a new folder, can be placed anywhere
+
+         1. Start Victoria 3 through Steam as usual.
          2. LOAD your save, then PAUSE the game.
          3. Double-click "INJECT HOOKS.cmd".
          4. Read the window:
