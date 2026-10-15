@@ -6,8 +6,8 @@
 
 **Reclaim late-game simulation speed in Victoria 3** by letting a handful of expensive engine tick-tasks run every Nth call instead of every call — with no changes to game files and no changes to how the game computes anything.
 
-> **The rule: when a task runs, it runs 100% unmodified.**
-> No number is ever computed differently — some caches and AI decisions just refresh a few days later than vanilla.
+> [!IMPORTANT]
+> **When a task runs, it runs 100% unmodified.** No number is ever computed differently — some caches and AI decisions just refresh a few days later than vanilla.
 
 ---
 
@@ -22,13 +22,15 @@
 - [Building from source](#building-from-source)
 - [License](#license)
 
+---
+
 ## How it works
 
 Victoria 3's daily simulation is a serial queue of ~266 named **tick tasks**. Profiling them with the game's own built-in console command (`dump_ticktask_timings`) shows a handful whose cost explodes as your country grows — one modifier-graph recalculation alone approaches 2.4 ms per tick by 1890.
 
 This project injects a small DLL that lets those tasks run on a slower cadence:
 
-```
+```text
 game tick ──► hooked task ──► skip?  ── yes ──► return (no work, no numbers touched)
                           └── no  ──► original game code runs, unmodified
 ```
@@ -50,10 +52,14 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 
 Profiled as the next candidates, not yet shipped: pop growth, economic migration, world market, state trades, pop-need cache, AI country goals.
 
+---
+
 ## Gameplay impacts
 
 - **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world drifts slightly from what vanilla would have done — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule.
 - **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
+
+---
 
 ## Results
 
@@ -68,9 +74,12 @@ Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick
 | 1891 | ~28 ms *(extrapolated)* | **14.70 ms** |
 | 1895 | — | **13.71 ms** |
 
+> [!TIP]
 > **By 1895, the daily sim costs what the unhooked 1860 game did — roughly 35 years of late-game slowdown reclaimed.**
 
 *Methodology note: the numbers are based on pretty much random fresh autosaves (every test was a fresh game on observer mode, and some AI tweaks happened between runs), so they don't have perfectly matching hooked and unhooked results.*
+
+---
 
 ## Install
 
@@ -86,13 +95,17 @@ Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick
 | `6/6 hooks installed` | Active — unpause and play on. |
 | `WRONG GAME VERSION` | The game updated; you're playing pure vanilla (nothing was patched — it fails closed). |
 
-> **IMPORTANT — inject while the game is loaded and paused.** Injecting while the game runs at speed can deadlock it during patching. If the game freezes right after injecting: close it via Task Manager, restart, and re-inject while paused.
+> [!WARNING]
+> **Inject only while the game is loaded and paused.** Injecting while the game runs at speed can deadlock it during patching. If the game freezes right after injecting: close it via Task Manager, restart, and re-inject while paused.
 
-**Going back to vanilla:** just don't run the script. Restarting the game also fully reverts.
+> [!NOTE]
+> **Going back to vanilla:** just don't run the script. Restarting the game also fully reverts.
+
+---
 
 ## Tuning
 
-Open `vic3hook.ini` and set any task's `_every_n` value — changes apply **within 5 seconds** while the game runs, no restart needed:
+Open `vic3hook.ini` and set any task's `_every_n` value:
 
 | Value | Behavior |
 |:---:|---|
@@ -100,10 +113,17 @@ Open `vic3hook.ini` and set any task's `_every_n` value — changes apply **with
 | `1` | Always run (passthrough) |
 | `N` | Work on every Nth call |
 
+> [!TIP]
+> Changes apply **within 5 seconds** while the game runs — no restart needed.
+
+---
+
 ## Troubleshooting
 
 - **Game misbehaves after tuning** → set that task's `every_n=0` in the ini, or delete the folder — the game itself is never modified.
 - **Re-injecting after a game restart** → run `INJECT HOOKS.cmd` again (load save, pause, inject).
+
+---
 
 ## Building from source
 
@@ -121,6 +141,8 @@ python scripts\resolve_targets.py "<path-to>\victoria3.exe"
 ```
 
 Hooks fail closed on any other build.
+
+---
 
 ## License
 
