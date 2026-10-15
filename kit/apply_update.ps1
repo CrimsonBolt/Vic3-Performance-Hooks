@@ -12,10 +12,11 @@ $newIni = Join-Path $staged 'vic3hook.ini'
 if ((Test-Path $userIni) -and (Test-Path $newIni)) {
     $user = Get-Content $userIni
     $new = Get-Content $newIni
-    $missing = @($new | Where-Object { $_ -match '^\s*\w+_every_n=' -and -not ($user | Where-Object { $_.Split('=')[0].Trim() -eq $PsItem.Split('=')[0].Trim() }) })
+    $userKeys = @($user | Where-Object { $_ -match '^\s*\w+_every_n=' } | ForEach-Object { ($_.Split('='))[0].Trim() })
+    $missing = @($new | Where-Object { $_ -match '^\s*\w+_every_n=' -and $userKeys -notcontains ($_.Split('='))[0].Trim() })
     if ($missing.Count -gt 0) {
         Add-Content -Path $userIni -Value ''
-        Add-Content -Path $userIni -Value ('; merged in by update (new keys, defaults):')
+        Add-Content -Path $userIni -Value '; merged in by update (new keys at their defaults):'
         $missing | ForEach-Object { Add-Content -Path $userIni -Value $_ }
     }
 }

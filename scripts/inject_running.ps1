@@ -25,7 +25,11 @@ function Invoke-UpdateCheck {
     $verAsset = $rel.assets | Where-Object { $_.name -eq 'version.txt' } | Select-Object -First 1
     if (-not $verAsset) { return }
     $remote = ''
-    try { $remote = (Invoke-WebRequest -Uri $verAsset.browser_download_url -UseBasicParsing -TimeoutSec 10).Content.Trim() } catch { return }
+    try {
+        $c = (Invoke-WebRequest -Uri $verAsset.browser_download_url -UseBasicParsing -TimeoutSec 10).Content
+        if ($c -is [byte[]]) { $c = [Text.Encoding]::UTF8.GetString($c) }  # PS 5.1 returns bytes for text assets
+        $remote = ($c | Out-String).Trim()
+    } catch { return }
     try { $lvo = [version]$local } catch { $lvo = [version]'0' }
     try { $rvo = [version]$remote } catch { return }
     if ($rvo -le $lvo) { return }
