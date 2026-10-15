@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# Windows entry points must check out with CRLF (cmd.exe LF parsing hazards)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

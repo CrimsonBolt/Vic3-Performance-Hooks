@@ -33,7 +33,11 @@ void log_line(const char* fmt, ...) {
     va_start(args, fmt);
     int m = _vsnprintf_s(buf + n, sizeof buf - n, _TRUNCATE, fmt, args);
     va_end(args);
-    if (m < 0) m = 0;
+    if (m < 0) {
+        // truncation: _TRUNCATE wrote what fit and returned -1 — keep the
+        // written bytes instead of silently dropping the whole message body
+        m = (int)strnlen(buf + n, sizeof buf - n - 1);
+    }
     n += m;
     buf[n++] = '\r'; buf[n++] = '\n';
     EnterCriticalSection(&g_cs);

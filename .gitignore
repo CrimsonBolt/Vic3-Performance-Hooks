@@ -9,3 +9,14 @@ build/
 # binaries ship via GitHub Releases, not the repo tree
 vic3hook.dll
 *.zip
+
+# kit/ is assembled by the build (CMake POST_BUILD); the template files that
+# are copies of tracked sources stay out of the tree
+kit/inject_running.ps1
+kit/MINHOOK-LICENSE.txt
+
+# runtime artifacts
+vic3hook.log
+
+# machine-local audit/working files (contain local paths)
+.zcode/

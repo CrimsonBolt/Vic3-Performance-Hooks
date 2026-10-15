@@ -1,11 +1,13 @@
 // vic3hook cadence hooks. Targets are tick-task run bodies (vtable slot 7 /
-// Group B prepare-is-run) resolved by the RTTI walk in H35 + H46 sessions
-// and scripts/resolve_hook_targets2.py (round 2), valid for victoria3.exe
-// 1.14.5 (rev 9f8281a3) ONLY. Every target's first bytes are verified
-// against the recorded prologue before a hook is installed; on any mismatch
-// the hook is disabled, never blind-patched. Detours forward ALL four
-// register args defensively (crash fix v2: the first build truncated to 2
-// args and dropped r8/r9). Install steps are logged BEFORE execution so a
+// Group B prepare-is-run) resolved by the RTTI walk recorded in
+// scripts/resolve_targets.py, valid for victoria3.exe 1.14.5 (rev 9f8281a3)
+// ONLY. Every target is bounds-checked against the loaded image and its first
+// bytes verified against the recorded prologue before a hook is installed;
+// on any mismatch the hook is disabled, never blind-patched. Detours forward
+// ALL four register args defensively (crash fix v2: the first build truncated
+// to 2 args and dropped r8/r9) and all targets are verified void-returning
+// tick-task Execute/Prepare methods, so the skip path's indeterminate rax is
+// never consumed by a caller. Install steps are logged BEFORE execution so a
 // crash leaves a trace.
 #include "hooks.hpp"
 #include "log.hpp"
@@ -19,13 +21,16 @@ typedef void (__fastcall* execute_fn4_t)(void* self, void* ctx, void* a3, void* 
 
 struct alignas(16) Prologue { uint8_t b[16]; };
 
-// Round 1 (sessions H35/H46, live since 2026-10-04) - the 6 proven hooks.
+// The 6 proven hooks (live-verified 2026-10-04 through 2026-10-14).
 // Round-2 targets (UpdatePopGrowth 0x13a3020, ProcessEconomicMigration
 // 0x11b0c00, UpdateAICountryGoalsAdjustments 0x1576300, UpdateStatePopNeedCache
 // 0x13b7e70, UpdateStateTrades 0x13b7bd0, UpdateWorldMarket 0xedf260) were
-// resolved via resolve_hook_targets2.py but REMOVED from the DLL on
-// 2026-10-14 pending in-game verification; re-add from this record or by
-// re-running the resolver.
+// resolved but removed 2026-10-14 pending in-game verification; re-add from
+// this record or by re-running scripts/resolve_targets.py.
+// NOTE UpdateSpendingVariables: the resolver's vtable slot-7 entry (0x1575af0)
+// is an adjustor thunk whose only tail-jump lands on 0x157aef0 — the shipped,
+// live-verified target. All call traffic passes through the thunk, so the two
+// placements are equivalent; this table hooks the thunk target.
 constexpr Prologue P_NAVY       = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x48}};
 constexpr Prologue P_BUILDSP2   = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x48}};
 constexpr Prologue P_UPDATEAI   = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x57}};
@@ -36,6 +41,7 @@ constexpr Prologue P_RECALCMOD  = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24
 constexpr int N_HOOKS = 6;
 uint64_t g_cnt[N_HOOKS] = {};
 volatile unsigned g_every[N_HOOKS] = {};
+bool g_mh_ready = false;
 
 #define DEF_DETOUR(idx) \
     void __fastcall detour_h##idx(void* self, void* ctx, void* a3, void* a4) { \
@@ -47,6 +53,64 @@ volatile unsigned g_every[N_HOOKS] = {};
 
 DEF_DETOUR(0)  DEF_DETOUR(1)  DEF_DETOUR(2)  DEF_DETOUR(3)
 DEF_DETOUR(4)  DEF_DETOUR(5)
+
+// A stored RVA is only trustworthy if the whole prologue window lies inside
+// the loaded game image AND is committed readable memory. Without this, a
+// future (smaller/different-layout) exe turns the prologue check itself into
+// an access violation — a crash instead of a fail-closed skip.
+bool target_readable(const void* target, size_t len, uintptr_t base) {
+    const uint8_t* b = reinterpret_cast<const uint8_t*>(base);
+    const IMAGE_DOS_HEADER* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(b);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0 || dos->e_lfanew > 0x1000)
+        return false;
+    const IMAGE_NT_HEADERS* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(b + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE)
+        return false;
+    const uintptr_t image_end = base + nt->OptionalHeader.SizeOfImage;
+    const uintptr_t t = reinterpret_cast<uintptr_t>(target);
+    if (t < base || t >= image_end || len > image_end - t)
+        return false;
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery(target, &mbi, sizeof mbi) == 0)
+        return false;
+    if (mbi.State != MEM_COMMIT || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0)
+        return false;
+    return t + len <= reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
+}
+
+bool install_hook_at(int i, uintptr_t base) {
+    HookDef& h = g_hooks[i];
+    void* target = reinterpret_cast<void*>(base + h.rva);
+    log_line("hook %-42s verifying target at %p...", h.name, target);
+    if (!target_readable(target, h.expect_len, base)) {
+        log_line("hook %-42s DISABLED: target outside the game image (game updated?)",
+                 h.name);
+        return false;
+    }
+    if (memcmp(target, h.expect, h.expect_len) != 0) {
+        uint8_t got[16];
+        memcpy(got, target, 16);
+        log_line("hook %-42s DISABLED: prologue mismatch (expected %02x%02x%02x%02x, got %02x%02x%02x%02x)",
+                 h.name, h.expect[0], h.expect[1], h.expect[2], h.expect[3],
+                 got[0], got[1], got[2], got[3]);
+        return false;
+    }
+    if (MH_CreateHook(target, h.detour_fn, &h.original_fn) != MH_OK) {
+        log_line("hook %-42s FAILED: MH_CreateHook", h.name);
+        return false;
+    }
+    // Pacing: MinHook's enable suspends/resumes all game threads; a gap lets
+    // them quiesce (two deadlocks at rapid back-to-back enables, 2026-10-14).
+    Sleep(250);
+    if (MH_EnableHook(target) != MH_OK) {
+        MH_RemoveHook(target);  // do not leave a created-but-disabled hook behind
+        log_line("hook %-42s FAILED: MH_EnableHook (hook removed)", h.name);
+        return false;
+    }
+    h.installed = true;
+    log_line("hook %-42s INSTALLED at %p, cadence 1/%u", h.name, target, h.every_n);
+    return true;
+}
 
 } // namespace
 
@@ -74,16 +138,15 @@ void hooks_set_cadence(const char* name, unsigned n) {
 
 bool hooks_install_all(void* game_base) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(game_base);
-    if (MH_Initialize() != MH_OK) {
-        log_line("MH_Initialize failed");
-        return false;
+    if (!g_mh_ready) {
+        if (MH_Initialize() != MH_OK) {
+            log_line("MH_Initialize failed");
+            return false;
+        }
+        g_mh_ready = true;
+        log_line("MH_Initialize ok");
     }
-    log_line("MH_Initialize ok");
-    // Pacing (2026-10-14): two live sessions deadlocked inside MH_EnableHook
-    // when hooks were enabled back-to-back (each enable suspends/resumes ALL
-    // game threads; 12 cycles in ~350 ms hit the race at hooks 6 and 10).
-    // Gaps between enables let the game's threads quiesce.
-    Sleep(500);
+    Sleep(500);  // initial pacing before the first thread-suspending enable
     int installed = 0;
     for (int i = 0; i < g_hook_count; ++i) {
         HookDef& h = g_hooks[i];
@@ -91,33 +154,23 @@ bool hooks_install_all(void* game_base) {
             log_line("hook %d/%d %-42s disabled (every_n=0)", i + 1, g_hook_count, h.name);
             continue;
         }
-        void* target = reinterpret_cast<void*>(base + h.rva);
-        log_line("hook %d/%d %-42s verifying prologue at %p...", i + 1, g_hook_count, h.name, target);
-        if (memcmp(target, h.expect, h.expect_len) != 0) {
-            uint8_t got[16];
-            memcpy(got, target, 16);
-            log_line("hook %-42s DISABLED: prologue mismatch (expected %02x%02x%02x%02x, got %02x%02x%02x%02x)",
-                     h.name, h.expect[0], h.expect[1], h.expect[2], h.expect[3],
-                     got[0], got[1], got[2], got[3]);
+        if (h.installed) {
+            log_line("hook %d/%d %-42s already installed", i + 1, g_hook_count, h.name);
             continue;
         }
-        log_line("hook %d/%d %-42s creating...", i + 1, g_hook_count, h.name);
-        if (MH_CreateHook(target, h.detour_fn, &h.original_fn) != MH_OK) {
-            log_line("hook %-42s FAILED: MH_CreateHook", h.name);
-            continue;
-        }
-        log_line("hook %d/%d %-42s enabling...", i + 1, g_hook_count, h.name);
-        if (MH_EnableHook(target) != MH_OK) {
-            log_line("hook %-42s FAILED: MH_EnableHook", h.name);
-            continue;
-        }
-        h.installed = true;
-        ++installed;
-        log_line("hook %-42s INSTALLED at %p, cadence 1/%u", h.name, target, h.every_n);
-        Sleep(250);
+        if (install_hook_at(i, base))
+            ++installed;
     }
     log_line("hooks installed: %d/%d", installed, g_hook_count);
     return installed > 0;
+}
+
+bool hooks_install_one(int index, void* game_base) {
+    if (index < 0 || index >= g_hook_count || !g_mh_ready)
+        return false;
+    if (g_hooks[index].installed)
+        return true;
+    return install_hook_at(index, reinterpret_cast<uintptr_t>(game_base));
 }
 
 void hooks_shutdown() {
@@ -132,5 +185,8 @@ void hooks_shutdown() {
             h.installed = false;
         }
     }
-    MH_Uninitialize();
+    if (g_mh_ready) {
+        MH_Uninitialize();
+        g_mh_ready = false;
+    }
 }

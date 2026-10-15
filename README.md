@@ -94,7 +94,8 @@ Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick
 | Message | Meaning |
 |---|---|
 | `6/6 hooks installed` | Active — unpause and play on. |
-| `WRONG GAME VERSION` | The game updated; you're playing pure vanilla (nothing was patched — it fails closed). |
+| `WRONG GAME VERSION` | No hook matched the game build — nothing was patched, you're on pure vanilla. |
+| `PARTIAL VERSION MISMATCH` | Some hooks installed and are active, others failed their byte check — the game is **not** vanilla. Restart without injecting for pure vanilla. |
 
 > [!WARNING]
 > **Inject only while the game is loaded and paused.** Injecting while the game runs at speed can deadlock it during patching. If the game freezes right after injecting: close it via Task Manager, restart, and re-inject while paused.
@@ -115,7 +116,7 @@ Open `vic3hook.ini` and set any task's `_every_n` value:
 | `N` | Work on every Nth call |
 
 > [!TIP]
-> Changes apply **within 5 seconds** while the game runs — no restart needed.
+> Changes apply **within 5 seconds** while the game runs — no restart needed. Turning a hook on from `0` installs it live (byte-verified, same as at injection); turning one off (`N` → `0`) makes it pass through immediately.
 
 ---
 
@@ -135,19 +136,21 @@ cmake -B build -A x64
 cmake --build build --config Release
 ```
 
+The build **assembles `kit\` automatically** (DLL + injector + ini + `INJECT HOOKS.cmd` + MinHook's license) — zip its contents for a release, or copy the folder anywhere and use it directly.
+
 Targets are valid for **Victoria 3 1.14.5 only**. After a game update, re-derive the addresses and prologues, then update the table in `src\hooks.cpp`:
 
 ```bat
 python scripts\resolve_targets.py "<path-to>\victoria3.exe"
 ```
 
-Hooks fail closed on any other build.
+The resolver reads the image base and the tick-task layout from the exe itself (no hardcoded build constants) and follows vtable adjustor thunks — when a row reports a thunk target, hook the thunk target, matching the shipped table. Hooks fail closed on any other build.
 
 ---
 
 ## License
 
 This project's code is released under the [MIT License](LICENSE).
-[MinHook](https://github.com/TsudaKageyu/minhook) 1.3.3 is vendored under `third_party/MinHook` (BSD-2-Clause — see its `LICENSE.txt`).
+[MinHook](https://github.com/TsudaKageyu/minhook) 1.3.3 is vendored under `third_party/MinHook` (BSD-2-Clause — see its `LICENSE.txt`, also bundled in release kits as `MINHOOK-LICENSE.txt`).
 
 *Not affiliated with or endorsed by Paradox Interactive. Use at your own risk.*
