@@ -16,6 +16,7 @@ static wchar_t g_ini_path[1024];
 static volatile bool g_running = true;
 static uintptr_t g_game_base = 0;
 static HANDLE g_init_thread = nullptr;
+static unsigned g_vanilla_day_period_applied = 0;
 
 static unsigned read_cadence(const char* name) {
     char key[80];
@@ -25,7 +26,18 @@ static unsigned read_cadence(const char* name) {
     return GetPrivateProfileIntW(L"hooks", wkey, 0, g_ini_path);
 }
 
+static unsigned read_vanilla_day_period() {
+    return GetPrivateProfileIntW(L"hooks", L"vanilla_day_every_n_days", 7, g_ini_path);
+}
+
 static void apply_cadences(bool log_changes) {
+    unsigned vd = read_vanilla_day_period();
+    if (vd != g_vanilla_day_period_applied) {
+        g_vanilla_day_period_applied = vd;
+        hooks_set_vanilla_day_period(vd);
+        if (log_changes)
+            log_line("vanilla day period -> %u day(s)%s", vd, vd == 0 ? " (off)" : "");
+    }
     for (int i = 0; i < g_hook_count; ++i) {
         unsigned v = read_cadence(g_hooks[i].name);
         unsigned old = g_hooks[i].every_n;

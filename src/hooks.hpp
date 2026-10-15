@@ -28,4 +28,9 @@ bool hooks_install_all(void* game_base);
 // every_n=0 at injection). Prologue-verified like the bulk installer.
 bool hooks_install_one(int index, void* game_base);
 void hooks_set_cadence(const char* name, unsigned n);
+// Scheduled resync: every Nth day (tick), all throttled tasks run at full
+// fidelity regardless of their cadence. Validated 2026-10-15: a few
+// full-fidelity days un-stuck frozen wars that had persisted for decades.
+// 0 disables the resync.
+void hooks_set_vanilla_day_period(unsigned days);
 void hooks_shutdown();

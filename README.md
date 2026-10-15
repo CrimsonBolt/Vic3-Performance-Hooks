@@ -71,8 +71,7 @@ Profiled as the next candidates, not yet shipped: pop growth, economic migration
 
 ## Known issues
 
-- **In long campaigns, some wars may never end.** Being worked on. The defaults are now conservative (every other tick, kit 1.14.5.3); if you still see it, set `RecalculateModifierNodes_every_n=0` in `vic3hook.ini`.
-- **At aggressive settings, the AI builds a smaller economy over a full campaign.** Being worked on. The defaults are now conservative (kit 1.14.5.3); lowering any hook's `_every_n` toward `1`/`0` in `vic3hook.ini` moves it closer to vanilla.
+- ~~**In long campaigns, some wars may never end.**~~ **Fixed in kit 1.14.5.4** — a scheduled "vanilla day" (one day per week where every throttled task runs at full fidelity) keeps war resolution alive. Diagnosed via a same-seed A/B: wars froze under any skipping and un-stuck within days of full-fidelity ticks.
 
 ---
 

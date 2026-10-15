@@ -41,12 +41,23 @@ constexpr Prologue P_RECALCMOD  = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24
 constexpr int N_HOOKS = 6;
 uint64_t g_cnt[N_HOOKS] = {};
 volatile unsigned g_every[N_HOOKS] = {};
+// Scheduled resync: on every day (call) that is a multiple of this period,
+// throttled tasks run at full fidelity. All six tasks are called exactly
+// once per day by the scheduler, so each detour's call counter IS a day
+// counter. Default 7 (one vanilla day per week); 0 = off.
+volatile unsigned g_vanilla_day_period = 7;
 bool g_mh_ready = false;
 
 #define DEF_DETOUR(idx) \
     void __fastcall detour_h##idx(void* self, void* ctx, void* a3, void* a4) { \
         unsigned n = g_every[idx]; \
-        if (n > 1 && ++g_cnt[idx] % n) { ++g_hooks[idx].skipped; return; } \
+        if (n > 1 && ++g_cnt[idx] % n) { \
+            unsigned period = g_vanilla_day_period; \
+            if (!(period > 0 && (unsigned)g_cnt[idx] % period == 0)) { \
+                ++g_hooks[idx].skipped; \
+                return; \
+            } \
+        } \
         ++g_hooks[idx].calls; \
         reinterpret_cast<execute_fn4_t>(g_hooks[idx].original_fn)(self, ctx, a3, a4); \
     }
@@ -134,6 +145,10 @@ void hooks_set_cadence(const char* name, unsigned n) {
             return;
         }
     }
+}
+
+void hooks_set_vanilla_day_period(unsigned days) {
+    g_vanilla_day_period = days;
 }
 
 bool hooks_install_all(void* game_base) {
