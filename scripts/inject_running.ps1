@@ -3,8 +3,10 @@
 # PAUSE the game, then double-click "INJECT HOOKS.cmd". Prints the install
 # verdict; never closes on its own — the .cmd wrapper keeps the window open.
 # On launch (unless -SkipUpdate) it checks the GitHub release repo for a
-# newer kit version; a downloaded update is applied by apply_update.ps1
-# when the injector window closes, preserving vic3hook.ini customizations.
+# newer kit version and PROMPTS: update now (downloaded and applied in this
+# window, before injection — nothing is ever downloaded or applied without
+# an explicit yes), open the releases page for a manual download, or keep
+# the current version. vic3hook.ini customizations are always preserved.
 param([switch]$SkipUpdate)
 $ErrorActionPreference = 'Stop'
 
@@ -13,6 +15,7 @@ $DllFull = Join-Path $here 'vic3hook.dll'
 if (-not (Test-Path $DllFull)) { throw "vic3hook.dll not found next to this script." }
 
 # --- 0. update check against the GitHub release repo -------------------------
+$script:ReleasePage = 'https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest'
 function Invoke-UpdateCheck {
     $local = '0'
     $vf = Join-Path $here 'version.txt'
@@ -33,20 +36,78 @@ function Invoke-UpdateCheck {
     try { $lvo = [version]$local } catch { $lvo = [version]'0' }
     try { $rvo = [version]$remote } catch { return }
     if ($rvo -le $lvo) { return }
-    $zipAsset = $rel.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
-    if (-not $zipAsset) { return }
-    Write-Output ("update available: kit {0} (this kit: {1}) - downloading..." -f $remote, $local)
-    $upd = Join-Path $here 'update'
-    New-Item -ItemType Directory -Path $upd -Force | Out-Null
-    $zipPath = Join-Path $upd 'Vic3-Performance-Hooks.zip'
+
+    # never download or change anything without an explicit choice
+    Write-Output '================================================================'
+    Write-Output ("update available: kit {0}   (installed: {1})" -f $remote, $local)
+    if ($rel.name) { Write-Output ("release: {0}" -f $rel.name) }
+    Write-Output ("page  : {0}" -f $script:ReleasePage)
+    Write-Output ''
+    Write-Output '[U] Update now (downloads from GitHub and applies it here)'
+    Write-Output '[M] Open the releases page for a manual download'
+    Write-Output '[Enter] Not now - continue with the installed version'
+    $choice = (Read-Host 'your choice').Trim()
+    if ($choice -ieq 'm') {
+        Start-Process $script:ReleasePage
+        Write-Output 'opened the releases page in your browser - continuing'
+        Write-Output 'with the installed version.'
+        return
+    }
+    if ($choice -ine 'u') { Write-Output 'staying on the installed version.'; return }
+
+    # consent given - but the running game may hold the DLL open (injected
+    # earlier this session); an in-place update needs the file unlocked.
     try {
-        Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipPath -UseBasicParsing -TimeoutSec 60
-        if ((Get-Item $zipPath).Length -lt 10000) { throw 'downloaded file too small' }
-        Expand-Archive -Path $zipPath -DestinationPath (Join-Path $upd 'staged') -Force
-        Write-Output 'update staged - it applies automatically when this window closes.'
+        $lockTest = [IO.File]::Open($DllFull, 'Open', 'ReadWrite', 'None')
+        $lockTest.Close()
     } catch {
-        Write-Output ("update download failed ({0}) - continuing with the current kit." -f $_.Exception.Message)
-        Remove-Item $upd -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Output 'cannot update: the running game still has the current'
+        Write-Output 'vic3hook.dll loaded (you injected earlier this session).'
+        Write-Output 'Close the game and run INJECT HOOKS.cmd again to update.'
+        return
+    }
+    $zipAsset = $rel.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
+    if (-not $zipAsset) {
+        Write-Output 'no zip asset on the release - download it manually from the page above.'
+        return
+    }
+    $sizeMb = [math]::Round($zipAsset.size / 1MB, 2)
+    Write-Output ("downloading {0} ({1} MB) from GitHub..." -f $zipAsset.name, $sizeMb)
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("vic3hook-update-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    try {
+        $zipPath = Join-Path $tmp 'kit.zip'
+        Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $zipPath -UseBasicParsing -TimeoutSec 120
+        if ((Get-Item $zipPath).Length -lt 10000) { throw 'downloaded file too small' }
+        $staged = Join-Path $tmp 'staged'
+        Expand-Archive -Path $zipPath -DestinationPath $staged -Force
+        # sanity: a real kit zip contains these
+        if (-not (Test-Path (Join-Path $staged 'vic3hook.dll')) -or -not (Test-Path (Join-Path $staged 'version.txt'))) {
+            throw 'zip does not look like a vic3hook kit'
+        }
+        # preserve the user's ini: never overwrite values, only merge in new keys
+        $userIni = Join-Path $here 'vic3hook.ini'
+        $newIni = Join-Path $staged 'vic3hook.ini'
+        if ((Test-Path $userIni) -and (Test-Path $newIni)) {
+            $user = Get-Content $userIni
+            $new = Get-Content $newIni
+            $userKeys = @($user | Where-Object { $_ -match '^\s*\w+_every_n=' } | ForEach-Object { ($_.Split('='))[0].Trim() })
+            $missing = @($new | Where-Object { $_ -match '^\s*\w+_every_n=' -and $userKeys -notcontains ($_.Split('='))[0].Trim() })
+            if ($missing.Count -gt 0) {
+                Add-Content -Path $userIni -Value ''
+                Add-Content -Path $userIni -Value '; merged in by update (new keys at their defaults):'
+                $missing | ForEach-Object { Add-Content -Path $userIni -Value $_ }
+            }
+        }
+        Get-ChildItem $staged | Where-Object { $_.Name -ne 'vic3hook.ini' } | ForEach-Object {
+            Copy-Item $_.FullName -Destination $here -Recurse -Force
+        }
+        $v = (Get-Content (Join-Path $here 'version.txt') -First 1).Trim()
+        Write-Output ("kit updated to {0} - your vic3hook.ini settings were kept." -f $v)
+    } catch {
+        Write-Output ("update failed ({0}) - continuing with the installed kit." -f $_.Exception.Message)
+    } finally {
+        Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 if (-not $SkipUpdate) { Invoke-UpdateCheck }

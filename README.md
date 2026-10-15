@@ -126,7 +126,13 @@ Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick wi
 
 ## Updating
 
-On every launch the kit checks this repo's latest GitHub release (HTTPS, 5-second timeout, **silent if offline**). If a newer version is published, the new kit is downloaded and applied automatically when the injector window closes — **your `vic3hook.ini` customizations are preserved** (values kept, newly added hook keys merged in with their defaults). To skip the check for a run, double-click with `-SkipUpdate` appended, or call the script directly:
+On every launch the kit checks this repo's latest GitHub release (HTTPS, 5-second timeout, **silent if offline**). Nothing is ever downloaded or changed without your explicit choice: when a newer version is available you are shown the release and asked —
+
+- **U** — update now: the new kit is downloaded from GitHub and applied in the same window, before injection. **Your `vic3hook.ini` customizations are preserved** (values kept, newly added hook keys merged in with their defaults).
+- **M** — open the [releases page](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest) in your browser to download manually.
+- **Enter** — not now; continue with the installed version.
+
+To skip the check entirely for a run, double-click with `-SkipUpdate` appended, or call the script directly:
 
 ```powershell
 powershell -File inject_running.ps1 -SkipUpdate
