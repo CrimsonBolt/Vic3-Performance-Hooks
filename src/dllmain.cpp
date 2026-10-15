@@ -17,6 +17,7 @@ static volatile bool g_running = true;
 static uintptr_t g_game_base = 0;
 static HANDLE g_init_thread = nullptr;
 static unsigned g_vanilla_day_period_applied = 0;
+static unsigned g_render_frame_if_needed_applied = 1;
 
 static unsigned read_cadence(const char* name) {
     char key[80];
@@ -28,6 +29,27 @@ static unsigned read_cadence(const char* name) {
 
 static unsigned read_vanilla_day_period() {
     return GetPrivateProfileIntW(L"hooks", L"vanilla_day_every_n_days", 7, g_ini_path);
+}
+
+static unsigned read_render_frame_if_needed() {
+    return GetPrivateProfileIntW(L"hooks", L"render_frame_if_needed", 1, g_ini_path);
+}
+
+static void apply_render_frame_option(bool log_changes) {
+    if (g_game_base == 0)
+        return;
+    unsigned v = read_render_frame_if_needed();
+    if (v != 0 && g_render_frame_if_needed_applied != 0)
+        return;  // staying at the game default; nothing to write
+    if (v == g_render_frame_if_needed_applied)
+        return;
+    g_render_frame_if_needed_applied = v;
+    hooks_apply_render_frame_option((void*)g_game_base, (int)v);
+    if (log_changes && v == 0)
+        log_line("render_frame_if_needed -> 0 (sub-tick rendering sacrificed for tick speed)");
+    else if (log_changes)
+        log_line("render_frame_if_needed -> 1 (byte already 0 stays 0 until game restart; "
+                 "this option only ever turns it off)");
 }
 
 static void apply_cadences(bool log_changes) {
@@ -84,6 +106,7 @@ static DWORD WINAPI init_thread(LPVOID) {
     // First read of cadences (before install so each target installs with
     // its intended cadence; 0 = not installed = vanilla).
     apply_cadences(false);
+    apply_render_frame_option(false);
 
     log_line("installing hooks (prologue-verified)...");
     if (hooks_install_all((void*)game))
@@ -97,6 +120,7 @@ static DWORD WINAPI init_thread(LPVOID) {
         Sleep(5000);
         if (!g_running) break;
         apply_cadences(true);
+        apply_render_frame_option(true);
     }
     return 0;
 }

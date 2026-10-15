@@ -21,12 +21,15 @@ typedef void (__fastcall* execute_fn4_t)(void* self, void* ctx, void* a3, void* 
 
 struct alignas(16) Prologue { uint8_t b[16]; };
 
-// The 6 proven hooks (live-verified 2026-10-04 through 2026-10-14).
-// Round-2 targets (UpdatePopGrowth 0x13a3020, ProcessEconomicMigration
-// 0x11b0c00, UpdateAICountryGoalsAdjustments 0x1576300, UpdateStatePopNeedCache
-// 0x13b7e70, UpdateStateTrades 0x13b7bd0, UpdateWorldMarket 0xedf260) were
-// resolved but removed 2026-10-14 pending in-game verification; re-add from
-// this record or by re-running scripts/resolve_targets.py.
+// The 6 proven hooks (live-verified 2026-10-04 through 2026-10-14) plus two
+// 1.14.6 experiment rows (ProcessEconomicMigration, UpdateAICountryGoals-
+// Adjustments — queue/cursor skip-safe per the 2026-10-16 night dive; shipped
+// at every_n=0 until live-verified). The other round-2 targets resolved
+// 2026-10-14 (UpdatePopGrowth 0x13a3020, UpdateStatePopNeedCache 0x13b7e70,
+// UpdateStateTrades 0x13b7bd0, UpdateWorldMarket 0xedf260) stay OUT: pop
+// growth is rate-coupled (skips halve birth/death rates) and the market/
+// trades/need-cache rebuilds are 28-day recompute tasks where throttling
+// mostly buys staleness. Record kept for future re-evaluation.
 // NOTE UpdateSpendingVariables: the resolver's vtable slot-7 entry (0x1575af0)
 // is an adjustor thunk whose only tail-jump lands on 0x157aef0 — the shipped,
 // live-verified target. All call traffic passes through the thunk, so the two
@@ -37,8 +40,15 @@ constexpr Prologue P_UPDATEAI   = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24
 constexpr Prologue H_AUTONOMOUS = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x57}};
 constexpr Prologue P_SPENDVAR   = {{0x48,0x89,0x5c,0x24,0x10,0x48,0x89,0x74,0x24,0x18,0x48,0x89,0x7c,0x24,0x20,0x55}};
 constexpr Prologue P_RECALCMOD  = {{0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,0x48,0x89,0x74,0x24,0x20,0x57}};
+// 1.14.6 experiment (night-dive 2026-10-16): ProcessEconomicMigration is a
+// queue task (records accumulate; a skipped call delays migration one day,
+// nothing is lost) and UpdateAICountryGoalsAdjustments is a sliced-budget
+// task with a progress cursor (skip-safe by design). Both ship at every_n=0
+// until live-verified. Prologues read from the pristine 1.14.5 exe.
+constexpr Prologue P_ECONMIGR   = {{0x48,0x8b,0xc4,0x48,0x81,0xec,0xb8,0x00,0x00,0x00,0x48,0x89,0x58,0x08,0x48,0x89}};
+constexpr Prologue P_AIGOALS    = {{0x4c,0x8b,0xdc,0x49,0x89,0x5b,0x08,0x49,0x89,0x73,0x10,0x57,0x48,0x83,0xec,0x60}};
 
-constexpr int N_HOOKS = 6;
+constexpr int N_HOOKS = 8;
 uint64_t g_cnt[N_HOOKS] = {};
 volatile unsigned g_every[N_HOOKS] = {};
 // Scheduled resync: on every day (call) that is a multiple of this period,
@@ -63,7 +73,7 @@ bool g_mh_ready = false;
     }
 
 DEF_DETOUR(0)  DEF_DETOUR(1)  DEF_DETOUR(2)  DEF_DETOUR(3)
-DEF_DETOUR(4)  DEF_DETOUR(5)
+DEF_DETOUR(4)  DEF_DETOUR(5)  DEF_DETOUR(6)  DEF_DETOUR(7)
 
 // A stored RVA is only trustworthy if the whole prologue window lies inside
 // the loaded game image AND is committed readable memory. Without this, a
@@ -132,6 +142,8 @@ HookDef g_hooks[] = {
     {"HandleAutonomousInvestment",            0x00f6e590, H_AUTONOMOUS.b, 16, (void*)&detour_h3,  nullptr, 0, 0, 0, false},
     {"UpdateSpendingVariables",               0x0157aef0, P_SPENDVAR.b,   16, (void*)&detour_h4,  nullptr, 0, 0, 0, false},
     {"RecalculateModifierNodes",              0x007da740, P_RECALCMOD.b,  16, (void*)&detour_h5,  nullptr, 0, 0, 0, false},
+    {"ProcessEconomicMigration",              0x011b0c00, P_ECONMIGR.b,   16, (void*)&detour_h6,  nullptr, 0, 0, 0, false},
+    {"UpdateAICountryGoalsAdjustments",       0x01576300, P_AIGOALS.b,    16, (void*)&detour_h7,  nullptr, 0, 0, 0, false},
 };
 const int g_hook_count = sizeof(g_hooks) / sizeof(g_hooks[0]);
 
@@ -149,6 +161,27 @@ void hooks_set_cadence(const char* name, unsigned n) {
 
 void hooks_set_vanilla_day_period(unsigned days) {
     g_vanilla_day_period = days;
+}
+
+// GameStateTick.RenderFrameIfNeeded storage byte (victoria3.exe 1.14.5).
+// Writing 0 here is identical to launching with -disable_renderframeifneeded
+// ("sacrifice sub-tick rendering for tick speed"): it disables the named
+// tick-scope timing machinery that feeds the sub-tick render decision.
+// Task execution and per-task profiler timing do NOT go through those
+// scopes (verified against the pump decompile), and the sim is unaffected —
+// only render pacing changes. Bounds-checked like every other write.
+bool hooks_apply_render_frame_option(void* game_base, int enabled) {
+    if (enabled != 0)
+        return true;  // game default (1); we never force it back on
+    const uintptr_t base = reinterpret_cast<uintptr_t>(game_base);
+    uint8_t* p = reinterpret_cast<uint8_t*>(base + 0x051f3e50);
+    if (!target_readable(p, 1, base)) {
+        log_line("render_frame_if_needed: target byte outside the game image - NOT written");
+        return false;
+    }
+    *p = 0;
+    log_line("render_frame_if_needed=0 applied (GameStateTick.RenderFrameIfNeeded -> 0)");
+    return true;
 }
 
 bool hooks_install_all(void* game_base) {
