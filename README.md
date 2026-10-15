@@ -1,88 +1,130 @@
 # Vic3 Performance Hooks
 
-A performance hook for **Victoria 3 (1.14.5)**: a small DLL that lets a handful of expensive engine "tick tasks" run every Nth call instead of every call, reclaiming late-game simulation time. The game executable is **never modified** — this is runtime injection, and each hook verifies the target function's bytes before patching; on any mismatch it disables itself instead of patching (fail closed).
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.14.5-8e44ad.svg)](#building-from-source)
+[![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#install)
 
-> **The rule: when a task runs, it runs 100% unmodified.** No number is ever computed differently — some caches and AI decisions just refresh a few days later than vanilla.
+**Reclaim late-game simulation speed in Victoria 3** by letting a handful of expensive engine tick-tasks run every Nth call instead of every call — with no changes to game files and no changes to how the game computes anything.
 
-## Install
+> **The rule: when a task runs, it runs 100% unmodified.**
+> No number is ever computed differently — some caches and AI decisions just refresh a few days later than vanilla.
 
-Unzip the release into a new folder — it can be placed anywhere.
+---
 
-1. Start Victoria 3 through Steam as usual.
-2. **LOAD your save, then PAUSE the game.**
-3. Double-click `INJECT HOOKS.cmd`.
-4. Read the window:
-   - `6/6 hooks installed` = active — unpause and play on.
-   - `WRONG GAME VERSION` = the game updated; you are playing pure vanilla (nothing was patched — it fails closed).
+## Contents
 
-**IMPORTANT: inject while the game is LOADED AND PAUSED.** Injecting while the game is running at speed can deadlock it during patching. If the game ever freezes right after injecting: close it via Task Manager, restart, and re-inject while paused.
-
-**Vanilla:** just don't run the script. Restarting the game also fully reverts.
-
-## Tuning
-
-Open `vic3hook.ini` — set any task's `_every_n` to `0` (off), `1` (always), or `N` (work on every Nth call). Changes apply within 5 seconds while the game runs.
-
-**Trouble:** game misbehaves after tuning → set `every_n=0` in the ini (or delete the folder — the game itself is never modified). To re-inject after a game restart, run `INJECT HOOKS.cmd` again.
+- [How it works](#how-it-works)
+- [Results](#results)
+- [Install](#install)
+- [Tuning](#tuning)
+- [Troubleshooting](#troubleshooting)
+- [Honest caveats](#honest-caveats)
+- [Building from source](#building-from-source)
+- [License](#license)
 
 ## How it works
 
-Victoria 3's daily simulation is a serial queue of ~266 named "tick tasks". I profiled them with the game's own built-in console command `dump_ticktask_timings`, found the ones whose cost explodes as your country grows, and injected a small DLL that lets a handful of them run every 2nd/5th/10th call instead of every call.
+Victoria 3's daily simulation is a serial queue of ~266 named **tick tasks**. Profiling them with the game's own built-in console command (`dump_ticktask_timings`) shows a handful whose cost explodes as your country grows — one modifier-graph recalculation alone approaches 2.4 ms per tick by 1890.
 
-Throttled tasks (every Nth call):
+This project injects a small DLL that lets those tasks run on a slower cadence:
 
-| task | every Nth | what it is |
-|---|---|---|
-| PrepareNavyAIData | 2 | navy AI data prep |
-| UpdateBuildingSpendingPriorities_Stage2 | 10 | building spending priorities |
-| UpdateAI | 2 | country AI update |
-| HandleAutonomousInvestment | 5 | AI autonomous investment |
-| UpdateSpendingVariables | 5 | spending variables refresh |
-| RecalculateModifierNodes | 5 | modifier-graph recalculation (the late-game knee) |
+```
+game tick ──► hooked task ──► skip?  ── yes ──► return (no work, no numbers touched)
+                          └── no  ──► original game code runs, unmodified
+```
+
+- The game executable is **never modified** — it's runtime injection.
+- Every hook verifies the target function's bytes before patching; on any mismatch it **disables itself instead of patching** (fail closed).
+- If the game updates, the worst case is a vanilla-speed session and a log entry.
+
+**Shipped hooks** (each runs every Nth call):
+
+| Task | Every Nth | What it is |
+|---|:---:|---|
+| `RecalculateModifierNodes` | 5 | modifier-graph recalculation — the single biggest late-game cost |
+| `UpdateBuildingSpendingPriorities_Stage2` | 10 | building spending priorities |
+| `PrepareNavyAIData` | 2 | navy AI data prep |
+| `UpdateAI` | 2 | country AI update |
+| `HandleAutonomousInvestment` | 5 | AI autonomous investment |
+| `UpdateSpendingVariables` | 5 | spending-variables refresh |
 
 Profiled as the next candidates, not yet shipped: pop growth, economic migration, world market, state trades, pop-need cache, AI country goals.
 
-## Performance
+## Results
 
-ms of sim work per daily tick (built-in profiler, 1,500-tick windows, same campaign, patch 1.14.5).
+Milliseconds of simulation work per daily tick — built-in profiler, 1,500-tick windows, patch 1.14.5.
 
-The performance numbers below are based on pretty much random fresh autosaves (every test was a fresh game on observer mode and some AI tweaks happened between runs), so they don't have perfectly matching hooked and unhooked results.
-
-| year | unhooked | hooked |
-|---|---|---|
-| 1837 | 9.95 ms | 7.87 ms (control test) |
+| Year | Unhooked | Hooked |
+|:---:|---:|---:|
+| 1837 | 9.95 ms | 7.87 ms *(control test)* |
 | 1860 | 13.14 ms | — |
 | 1880 | 16.87 ms | — |
-| 1890 | 26.49 ms | — |
-| 1891 | ~28 ms | 14.70 ms |
-| 1895 | — | 13.71 ms |
+| 1890 | **26.49 ms** ← the knee | — |
+| 1891 | ~28 ms *(extrapolated)* | **14.70 ms** |
+| 1895 | — | **13.71 ms** |
 
-By 1895 with 6 hooks active, the daily sim costs what the **unhooked 1860** game did — roughly 35 years of late-game slowdown reclaimed.
+> **By 1895, the daily sim costs what the unhooked 1860 game did — roughly 35 years of late-game slowdown reclaimed.**
+
+*Methodology note: the numbers are based on pretty much random fresh autosaves (every test was a fresh game on observer mode, and some AI tweaks happened between runs), so they don't have perfectly matching hooked and unhooked results.*
+
+## Install
+
+**Requires:** Victoria 3 **1.14.5** (rev `9f8281a3`), Windows x64. Unzip the release into a new folder — it can be placed anywhere.
+
+1. Start Victoria 3 through Steam as usual.
+2. **Load your save, then pause the game.**
+3. Double-click `INJECT HOOKS.cmd`.
+4. Read the window:
+
+| Message | Meaning |
+|---|---|
+| `6/6 hooks installed` | Active — unpause and play on. |
+| `WRONG GAME VERSION` | The game updated; you're playing pure vanilla (nothing was patched — it fails closed). |
+
+> **IMPORTANT — inject while the game is loaded and paused.** Injecting while the game runs at speed can deadlock it during patching. If the game freezes right after injecting: close it via Task Manager, restart, and re-inject while paused.
+
+**Going back to vanilla:** just don't run the script. Restarting the game also fully reverts.
+
+## Tuning
+
+Open `vic3hook.ini` and set any task's `_every_n` value — changes apply **within 5 seconds** while the game runs, no restart needed:
+
+| Value | Behavior |
+|:---:|---|
+| `0` | Off — task runs every call (fully vanilla) |
+| `1` | Always run (passthrough) |
+| `N` | Work on every Nth call |
+
+## Troubleshooting
+
+- **Game misbehaves after tuning** → set that task's `every_n=0` in the ini, or delete the folder — the game itself is never modified.
+- **Re-injecting after a game restart** → run `INJECT HOOKS.cmd` again (load save, pause, inject).
 
 ## Honest caveats
 
-- This isn't free perf. Tasks that make decisions (AI updates, investments) run less often, so the world drifts slightly from what vanilla would have done — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule.
-- It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
+- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world drifts slightly from what vanilla would have done — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule.
+- **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
 
 ## Building from source
 
-Requires Visual Studio Build Tools (C++) and CMake 3.21+.
+Requires Visual Studio Build Tools (C++) and CMake 3.21+:
 
 ```bat
 cmake -B build -A x64
 cmake --build build --config Release
 ```
 
-Targets are valid for **Victoria 3 1.14.5 only**. After a game update, re-derive the addresses and prologues with:
+Targets are valid for **Victoria 3 1.14.5 only**. After a game update, re-derive the addresses and prologues, then update the table in `src\hooks.cpp`:
 
 ```bat
 python scripts\resolve_targets.py "<path-to>\victoria3.exe"
 ```
 
-and update the table in `src\hooks.cpp`. Hooks fail closed on any other build.
+Hooks fail closed on any other build.
 
 ## License
 
-This project's code is released under the [MIT License](LICENSE). [MinHook](https://github.com/TsudaKageyu/minhook) 1.3.3 is vendored under `third_party/MinHook` (BSD-2-Clause, see its `LICENSE.txt`).
+This project's code is released under the [MIT License](LICENSE).
+[MinHook](https://github.com/TsudaKageyu/minhook) 1.3.3 is vendored under `third_party/MinHook` (BSD-2-Clause — see its `LICENSE.txt`).
 
-Not affiliated with or endorsed by Paradox Interactive. Use at your own risk.
+*Not affiliated with or endorsed by Paradox Interactive. Use at your own risk.*
