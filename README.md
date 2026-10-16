@@ -123,7 +123,7 @@ Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick wi
 
 | Message | Meaning |
 |---|---|
-| `N/M hooks installed` | Active — unpause and play on. (Shipped defaults: 6 of 8; the two experimental ones and `RecalculateModifierNodes` are disabled by config.) |
+| `N/M hooks installed` | Active — unpause and play on. (Shipped defaults: 5 of 8; the two experimental ones and `RecalculateModifierNodes` are disabled by config.) |
 | `WRONG GAME VERSION` | No hook matched the game build — nothing was patched, you're on pure vanilla. |
 | `PARTIAL VERSION MISMATCH` | Some hooks installed and are active, others failed their byte check — the game is **not** vanilla. Restart without injecting for pure vanilla. |
 
