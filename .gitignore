@@ -20,3 +20,6 @@ vic3hook.log
 
 # machine-local audit/working files (contain local paths)
 .zcode/
+
+# packaged kit output (built by scripts/make_kit.py)
+dist/
