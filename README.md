@@ -1,7 +1,7 @@
 # Vic3 Performance Hooks
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.14.5-8e44ad.svg)](#building-from-source)
+[![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.13.11%20%2F%201.14.5-8e44ad.svg)](#building-from-source)
 [![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#using-it)
 [![Download - Releases](https://img.shields.io/badge/download-GitHub%20Releases-brightgreen.svg)](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
 
@@ -183,6 +183,14 @@ cmake --build build --config Release
 ```
 
 The build **assembles `kit\` automatically** (DLL + injector + ini + `INJECT HOOKS.cmd` + MinHook's license) — zip its contents for a release, or copy the folder anywhere and use it directly.
+
+**Packaging for a game version:** drop the game's `victoria3.exe` anywhere and run
+
+```bat
+python scripts\make_kit.py --game-version 1.13.11 --exe "<path>ictoria3.exe"
+```
+
+It resolves the hook targets from that exe (RTTI walk), writes `targets/<version>.tsv`, and stamps `dist/vic3hook-<version>/` plus a release zip. The kit's `vic3hook.targets` sidecar is read by the DLL at injection — **supporting a new game version needs no rebuild**, only a new sidecar. (The DLL also carries built-in candidates for 1.14.5 and 1.13.11 as a fallback when the sidecar is missing.) Every candidate is prologue-verified before patching, fail-closed.
 
 **Releasing:** tag the release with the kit version (e.g. `1.14.5.7`) — the updater reads the version from the tag. Until every user is on the 1.14.5.6-or-later updater, **also upload `kit\version.txt` as a release asset** (older updaters look for it); once everyone has updated past this point the asset can be dropped.
 
