@@ -46,6 +46,11 @@ function Invoke-UpdateCheck {
     try { $lvo = [version]$local } catch { $lvo = [version]'0' }
     try { $rvo = [version]$remote } catch { return }
     if ($rvo -le $lvo) { return }
+    # game-version gate: only offer updates within the same game build line
+    # (a 1.13.11 kit is never offered a 1.14.5.z kit and vice versa)
+    $localGame = ($local.Split('.')[0..2] -join '.')
+    $remoteGame = ($remote.Split('.')[0..2] -join '.')
+    if ($localGame -ne $remoteGame) { return }
 
     # never download or change anything without an explicit choice
     Write-Output '================================================================'

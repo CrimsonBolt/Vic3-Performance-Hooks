@@ -92,6 +92,8 @@ static DWORD WINAPI init_thread(LPVOID) {
     lstrcpyW(g_ini_path, dll_path);  lstrcatW(g_ini_path, L"vic3hook.ini");
     wchar_t log_path[1024];
     lstrcpyW(log_path, dll_path);    lstrcatW(log_path, L"vic3hook.log");
+    wchar_t targets_path[1024];
+    lstrcpyW(targets_path, dll_path); lstrcatW(targets_path, L"vic3hook.targets");
     log_open(log_path);
     log_line("vic3hook init v3 (%d-hook build " __DATE__ " " __TIME__ ")", g_hook_count);
 
@@ -107,6 +109,8 @@ static DWORD WINAPI init_thread(LPVOID) {
     // its intended cadence; 0 = not installed = vanilla).
     apply_cadences(false);
     apply_render_frame_option(false);
+
+    hooks_load_targets_sidecar(targets_path);  // optional; absent = built-in table
 
     log_line("installing hooks (prologue-verified)...");
     if (hooks_install_all((void*)game))

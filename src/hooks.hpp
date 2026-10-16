@@ -11,6 +11,8 @@ struct HookDef {
     uint32_t rva;              // target VA - preferred image base
     const uint8_t* expect;     // 16 prologue bytes recorded from 1.14.5
     unsigned expect_len;
+    uint32_t rva_alt;          // second supported game build's address
+    const uint8_t* expect_alt; // ...and its prologue (0 = single-build hook)
     void* detour_fn;           // our detour: void (__fastcall*)(void*, void*, void*, void*)
                                // (4 register args forwarded — see hooks.cpp)
     void* original_fn;         // trampoline (set at install)
@@ -24,6 +26,10 @@ extern HookDef g_hooks[];
 extern const int g_hook_count;
 
 bool hooks_install_all(void* game_base);
+// Optional sidecar target table ("vic3hook.targets" next to the DLL):
+// TSV rows "name<TAB>rva<TAB>prologue_hex32" add install candidates for
+// ANY game version without rebuilding. Called before hooks_install_all.
+bool hooks_load_targets_sidecar(const wchar_t* path);
 // Install a single hook by index (hot-reload path: enables a hook that was
 // every_n=0 at injection). Prologue-verified like the bulk installer.
 bool hooks_install_one(int index, void* game_base);

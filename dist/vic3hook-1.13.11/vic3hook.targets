@@ -1,0 +1,10 @@
+# vic3hook target table - game build 1.13.11
+# columns: hook_name<TAB>rva<TAB>prologue_hex(16 bytes)
+PrepareNavyAIData	0x01516af0	48895c240848896c2410488974241848
+UpdateBuildingSpendingPriorities_Stage2	0x0150fa50	4c8bdc53564881ecd8000000488b4208
+UpdateAI	0x0150f470	48895c240848896c2410488974241857
+HandleAutonomousInvestment	0x00f168b0	48895c240848896c2410488974241857
+UpdateSpendingVariables	0x0150fa30	488b4208488b88200100004881c18026
+RecalculateModifierNodes	0x007c11e0	48895c240848896c2410488974242057
+ProcessEconomicMigration	0x01152370	488bc44881ecb8000000488958084889
+UpdateAICountryGoalsAdjustments	0x015101a0	4c8bdc49895b0849897310574883ec60

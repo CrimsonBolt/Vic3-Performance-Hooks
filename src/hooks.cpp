@@ -1,7 +1,7 @@
 // vic3hook cadence hooks. Targets are tick-task run bodies (vtable slot 7 /
 // Group B prepare-is-run) resolved by the RTTI walk recorded in
-// scripts/resolve_targets.py, valid for victoria3.exe 1.14.5 (rev 9f8281a3)
-// ONLY. Every target is bounds-checked against the loaded image and its first
+// scripts/resolve_targets.py. Candidates for victoria3.exe 1.14.5 (rev
+// 9f8281a3) and 1.13.11; the first whose prologue verifies installs. Every target is bounds-checked against the loaded image and its first
 // bytes verified against the recorded prologue before a hook is installed;
 // on any mismatch the hook is disabled, never blind-patched. Detours forward
 // ALL four register args defensively (crash fix v2: the first build truncated
@@ -14,6 +14,8 @@
 #include <MinHook.h>
 #include <windows.h>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 
 namespace {
 
@@ -57,6 +59,7 @@ volatile unsigned g_every[N_HOOKS] = {};
 // counter. Default 7 (one vanilla day per week); 0 = off.
 volatile unsigned g_vanilla_day_period = 7;
 bool g_mh_ready = false;
+int g_build_hint = 0;  // 1 = 1.14.5 candidates matched, 2 = 1.13.11, 0 = none yet
 
 #define DEF_DETOUR(idx) \
     void __fastcall detour_h##idx(void* self, void* ctx, void* a3, void* a4) { \
@@ -99,21 +102,55 @@ bool target_readable(const void* target, size_t len, uintptr_t base) {
     return t + len <= reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
 }
 
+// ---- sidecar target table (version-driven packaging) -----------------------
+// Rows from vic3hook.targets extend each hook's candidate list at runtime:
+// a new game build ships as a data file, never a rebuild. Build ids for
+// logging/gating: 1 = built-in 1.14.5, 2 = built-in 1.13.11, 3+ = sidecar.
+#define SIDECAR_MAX_PER_HOOK 6
+#define SIDECAR_MAX_TOTAL 64
+struct SidecarRow { uint32_t rva; uint8_t pro[16]; };
+static SidecarRow g_sidecar[8][SIDECAR_MAX_PER_HOOK];
+static int g_sidecar_n[8];
+
+
+
 bool install_hook_at(int i, uintptr_t base) {
     HookDef& h = g_hooks[i];
-    void* target = reinterpret_cast<void*>(base + h.rva);
-    log_line("hook %-42s verifying target at %p...", h.name, target);
-    if (!target_readable(target, h.expect_len, base)) {
-        log_line("hook %-42s DISABLED: target outside the game image (game updated?)",
-                 h.name);
-        return false;
+    // Each hook carries one candidate per supported game build (primary =
+    // 1.14.5, alt = 1.13.11): install on the first whose prologue verifies,
+    // fail closed when none does. Keeps the injector's verdict keywords
+    // ("prologue mismatch" / "outside the game image") intact.
+    uint32_t rvas[2 + SIDECAR_MAX_PER_HOOK];
+    const uint8_t* expects[2 + SIDECAR_MAX_PER_HOOK];
+    int ncand = 0;
+    if (h.rva && h.expect) { rvas[ncand] = h.rva; expects[ncand] = h.expect; ++ncand; }
+    if (h.rva_alt && h.expect_alt) { rvas[ncand] = h.rva_alt; expects[ncand] = h.expect_alt; ++ncand; }
+    for (int sc = 0; sc < g_sidecar_n[i]; ++sc) { rvas[ncand] = g_sidecar[i][sc].rva; expects[ncand] = g_sidecar[i][sc].pro; ++ncand; }
+    void* target = nullptr;
+    int build = -1;
+    for (int c = 0; c < ncand; ++c) {
+        void* cand = reinterpret_cast<void*>(base + rvas[c]);
+        log_line("hook %-42s verifying target at %p...", h.name, cand);
+        if (!target_readable(cand, h.expect_len, base)) {
+            log_line("hook %-42s candidate %d: outside the game image (game updated?)",
+                     h.name, c + 1);
+            continue;
+        }
+        if (memcmp(cand, expects[c], h.expect_len) != 0) {
+            uint8_t got[16];
+            memcpy(got, cand, 16);
+            log_line("hook %-42s candidate %d: prologue mismatch (expected %02x%02x%02x%02x, got %02x%02x%02x%02x)",
+                     h.name, c + 1, expects[c][0], expects[c][1], expects[c][2], expects[c][3],
+                     got[0], got[1], got[2], got[3]);
+            continue;
+        }
+        target = cand;
+        build = c;
+        break;
     }
-    if (memcmp(target, h.expect, h.expect_len) != 0) {
-        uint8_t got[16];
-        memcpy(got, target, 16);
-        log_line("hook %-42s DISABLED: prologue mismatch (expected %02x%02x%02x%02x, got %02x%02x%02x%02x)",
-                 h.name, h.expect[0], h.expect[1], h.expect[2], h.expect[3],
-                 got[0], got[1], got[2], got[3]);
+    if (!target) {
+        log_line("hook %-42s DISABLED: no candidate matched (unsupported game version?)",
+                 h.name);
         return false;
     }
     if (MH_CreateHook(target, h.detour_fn, &h.original_fn) != MH_OK) {
@@ -129,21 +166,70 @@ bool install_hook_at(int i, uintptr_t base) {
         return false;
     }
     h.installed = true;
-    log_line("hook %-42s INSTALLED at %p, cadence 1/%u", h.name, target, h.every_n);
+    if (g_build_hint == 0)
+        g_build_hint = build + 1;
+    log_line("hook %-42s INSTALLED at %p (build %d), cadence 1/%u", h.name, target, build + 1, h.every_n);
     return true;
 }
 
+
 } // namespace
 
+bool hooks_load_targets_sidecar(const wchar_t* path) {
+    FILE* f = _wfopen(path, L"rb");
+    if (!f)
+        return false;
+    char line[256];
+    int rows = 0, bad = 0;
+    while (fgets(line, sizeof line, f)) {
+if (line[0] == '#' || line[0] == '\n' || line[0] == '\r' || line[0] == 0)
+            continue;
+        char* t1 = strchr(line, '	'); if (!t1) { ++bad; continue; }
+        *t1 = 0;
+        char* t2 = strchr(t1 + 1, '	'); if (!t2) { ++bad; continue; }
+        *t2 = 0;
+        const char* hex = t2 + 1;
+        size_t hexlen = strnlen(hex, 40);
+        while (hexlen && (hex[hexlen-1] == '\n' || hex[hexlen-1] == '\r')) --hexlen;
+        if (hexlen != 32) { ++bad; continue; }
+        int idx = -1;
+        for (int i = 0; i < g_hook_count; ++i)
+            if (strcmp(g_hooks[i].name, line) == 0) { idx = i; break; }
+        if (idx < 0 || g_sidecar_n[idx] >= SIDECAR_MAX_PER_HOOK || rows >= SIDECAR_MAX_TOTAL) {
+            ++bad; continue;
+        }
+        SidecarRow& r = g_sidecar[idx][g_sidecar_n[idx]];
+        r.rva = (uint32_t)strtoul(t1 + 1, nullptr, 0);
+        for (int b = 0; b < 16; ++b) {
+            char byte[3] = { hex[b*2], hex[b*2+1], 0 };
+            r.pro[b] = (uint8_t)strtoul(byte, nullptr, 16);
+        }
+        ++g_sidecar_n[idx]; ++rows;
+    }
+    fclose(f);
+    int hooks = 0;
+    for (int i = 0; i < g_hook_count; ++i) if (g_sidecar_n[i]) ++hooks;
+    log_line("sidecar targets: %d row(s) for %d hook(s) loaded%s",
+             rows, hooks, bad ? " (malformed lines skipped)" : "");
+    return rows > 0;
+}
+
+
+// 1.13.11 candidate prologue (the only one that differs from its 1.14.5
+// counterpart — every other hooked function kept identical bytes between
+// builds, just relocated). From scripts/resolve_targets.py on the 1.13.11
+// exe (see vic3-re/notes/kit-1.13.11-plan.md).
+constexpr Prologue P_BUILDSP2_113 = {{0x4c,0x8b,0xdc,0x53,0x56,0x48,0x81,0xec,0xd8,0x00,0x00,0x00,0x48,0x8b,0x42,0x08}};
+
 HookDef g_hooks[] = {
-    {"PrepareNavyAIData",                     0x0157d990, P_NAVY.b,       16, (void*)&detour_h0,  nullptr, 0, 0, 0, false},
-    {"UpdateBuildingSpendingPriorities_Stage2",0x0157cbd0, P_BUILDSP2.b,  16, (void*)&detour_h1,  nullptr, 0, 0, 0, false},
-    {"UpdateAI",                              0x01575530, P_UPDATEAI.b,   16, (void*)&detour_h2,  nullptr, 0, 0, 0, false},
-    {"HandleAutonomousInvestment",            0x00f6e590, H_AUTONOMOUS.b, 16, (void*)&detour_h3,  nullptr, 0, 0, 0, false},
-    {"UpdateSpendingVariables",               0x0157aef0, P_SPENDVAR.b,   16, (void*)&detour_h4,  nullptr, 0, 0, 0, false},
-    {"RecalculateModifierNodes",              0x007da740, P_RECALCMOD.b,  16, (void*)&detour_h5,  nullptr, 0, 0, 0, false},
-    {"ProcessEconomicMigration",              0x011b0c00, P_ECONMIGR.b,   16, (void*)&detour_h6,  nullptr, 0, 0, 0, false},
-    {"UpdateAICountryGoalsAdjustments",       0x01576300, P_AIGOALS.b,    16, (void*)&detour_h7,  nullptr, 0, 0, 0, false},
+    {"PrepareNavyAIData",                     0x0157d990, P_NAVY.b,       16, 0x01516af0, P_NAVY.b,       (void*)&detour_h0,  nullptr, 0, 0, 0, false},
+    {"UpdateBuildingSpendingPriorities_Stage2",0x0157cbd0, P_BUILDSP2.b,  16, 0x0150fa50, P_BUILDSP2_113.b,(void*)&detour_h1,  nullptr, 0, 0, 0, false},
+    {"UpdateAI",                              0x01575530, P_UPDATEAI.b,   16, 0x0150f470, P_UPDATEAI.b,   (void*)&detour_h2,  nullptr, 0, 0, 0, false},
+    {"HandleAutonomousInvestment",            0x00f6e590, H_AUTONOMOUS.b, 16, 0x00f168b0, H_AUTONOMOUS.b, (void*)&detour_h3,  nullptr, 0, 0, 0, false},
+    {"UpdateSpendingVariables",               0x0157aef0, P_SPENDVAR.b,   16, 0x015142b0, P_SPENDVAR.b,   (void*)&detour_h4,  nullptr, 0, 0, 0, false},
+    {"RecalculateModifierNodes",              0x007da740, P_RECALCMOD.b,  16, 0x007c11e0, P_RECALCMOD.b,  (void*)&detour_h5,  nullptr, 0, 0, 0, false},
+    {"ProcessEconomicMigration",              0x011b0c00, P_ECONMIGR.b,   16, 0x01152370, P_ECONMIGR.b,   (void*)&detour_h6,  nullptr, 0, 0, 0, false},
+    {"UpdateAICountryGoalsAdjustments",       0x01576300, P_AIGOALS.b,    16, 0x015101a0, P_AIGOALS.b,    (void*)&detour_h7,  nullptr, 0, 0, 0, false},
 };
 const int g_hook_count = sizeof(g_hooks) / sizeof(g_hooks[0]);
 
@@ -173,6 +259,10 @@ void hooks_set_vanilla_day_period(unsigned days) {
 bool hooks_apply_render_frame_option(void* game_base, int enabled) {
     if (enabled != 0)
         return true;  // game default (1); we never force it back on
+    if (g_build_hint != 1) {  // cvar address is 1.14.5-specific
+        log_line("render_frame_if_needed: skipped - game is not the 1.14.5 build (address verified for 1.14.5 only)");
+        return false;
+    }
     const uintptr_t base = reinterpret_cast<uintptr_t>(game_base);
     uint8_t* p = reinterpret_cast<uint8_t*>(base + 0x051f3e50);
     if (!target_readable(p, 1, base)) {
