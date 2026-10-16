@@ -2,14 +2,14 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.14.5-8e44ad.svg)](#building-from-source)
-[![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#install)
+[![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#using-it)
 [![Download - Releases](https://img.shields.io/badge/download-GitHub%20Releases-brightgreen.svg)](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
 
 **Reclaim late-game simulation speed in Victoria 3** by letting a handful of expensive engine tick-tasks run every Nth call instead of every call — with no changes to game files and no changes to how the game computes anything.
 
 > [!TIP]
 > ### ➤ [Download the latest release here](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
-> Unzip it anywhere — no build, no install. Then see [Install](#install) for the 3-step usage.
+> Unzip it anywhere — no build, no setup. Then see [Using it](#using-it) for the 3-step usage.
 > The kit checks for updates automatically on every launch.
 
 > [!IMPORTANT]
@@ -22,7 +22,7 @@
 - [How it works](#how-it-works)
 - [Gameplay impacts](#gameplay-impacts)
 - [Results](#results)
-- [Install](#install)
+- [Using it](#using-it)
 - [Tuning](#tuning)
 - [Troubleshooting](#troubleshooting)
 - [Building from source](#building-from-source)
@@ -112,7 +112,7 @@ Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick wi
 
 ---
 
-## Install
+## Using it
 
 **Requires:** Victoria 3 **1.14.5** (rev `9f8281a3`), Windows x64. Unzip the release into a new folder — it can be placed anywhere.
 
