@@ -184,6 +184,8 @@ cmake --build build --config Release
 
 The build **assembles `kit\` automatically** (DLL + injector + ini + `INJECT HOOKS.cmd` + MinHook's license) — zip its contents for a release, or copy the folder anywhere and use it directly.
 
+**Releasing:** tag the release with the kit version (e.g. `1.14.5.7`) — the updater reads the version from the tag. Until every user is on the 1.14.5.6-or-later updater, **also upload `kit\version.txt` as a release asset** (older updaters look for it); once everyone has updated past this point the asset can be dropped.
+
 Targets are valid for **Victoria 3 1.14.5 only**. After a game update, re-derive the addresses and prologues, then update the table in `src\hooks.cpp`:
 
 ```bat

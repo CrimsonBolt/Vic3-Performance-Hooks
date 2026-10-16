@@ -25,14 +25,24 @@ function Invoke-UpdateCheck {
         $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/CrimsonBolt/Vic3-Performance-Hooks/releases/latest' `
             -Headers @{ 'User-Agent' = 'vic3hook-update-check' } -TimeoutSec 5
     } catch { return }  # offline or blocked: run what we have, silently
-    $verAsset = $rel.assets | Where-Object { $_.name -eq 'version.txt' } | Select-Object -First 1
-    if (-not $verAsset) { return }
+    # remote version: prefer the release tag (tags carry the kit version,
+    # e.g. 1.14.5.6); fall back to a version.txt asset for older releases
+    # that were tagged without it. A release with neither is not updatable.
     $remote = ''
-    try {
-        $c = (Invoke-WebRequest -Uri $verAsset.browser_download_url -UseBasicParsing -TimeoutSec 10).Content
-        if ($c -is [byte[]]) { $c = [Text.Encoding]::UTF8.GetString($c) }  # PS 5.1 returns bytes for text assets
-        $remote = ($c | Out-String).Trim()
-    } catch { return }
+    $tag = ''
+    if ($rel.tag_name) { $tag = $rel.tag_name.Trim() }
+    if ($tag -match '^v?(\d+(\.\d+){1,3})$') { $remote = $Matches[1] }
+    if (-not $remote) {
+        $verAsset = $rel.assets | Where-Object { $_.name -eq 'version.txt' } | Select-Object -First 1
+        if ($verAsset) {
+            try {
+                $c = (Invoke-WebRequest -Uri $verAsset.browser_download_url -UseBasicParsing -TimeoutSec 10).Content
+                if ($c -is [byte[]]) { $c = [Text.Encoding]::UTF8.GetString($c) }  # PS 5.1 returns bytes for text assets
+                $remote = ($c | Out-String).Trim()
+            } catch { return }
+        }
+    }
+    if (-not $remote) { return }
     try { $lvo = [version]$local } catch { $lvo = [version]'0' }
     try { $rvo = [version]$remote } catch { return }
     if ($rvo -le $lvo) { return }
