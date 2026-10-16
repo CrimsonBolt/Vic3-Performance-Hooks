@@ -43,7 +43,7 @@ def resolve(exe: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-version", required=True, help="e.g. 1.13.11")
-    ap.add_argument("--exe", required=True, type=Path)
+    ap.add_argument("--exe", type=Path)
     ap.add_argument("--kit-rev", type=int, default=1)
     ap.add_argument("--skip-resolve", action="store_true",
                     help="reuse targets/<ver>.tsv if it already exists")
@@ -54,6 +54,8 @@ def main():
     if a.skip_resolve and tsv_path.exists():
         print(f"using existing {tsv_path}")
     else:
+        if not a.exe:
+            sys.exit("either --exe or --skip-resolve with an existing targets file is required")
         if not a.exe.exists():
             sys.exit(f"exe not found: {a.exe}")
         print(f"resolving targets from {a.exe} ...")
@@ -78,7 +80,7 @@ def main():
         sys.exit("build/Release/vic3hook.dll missing - build first")
     shutil.copy(dll, kit / "vic3hook.dll")
     shutil.copy(tsv_path, kit / "vic3hook.targets")
-    for f in ["inject_running.ps1", "INJECT HOOKS.cmd", "MINHOOK-LICENSE.txt"]:
+    for f in ["inject_running.ps1", "INJECT HOOKS.cmd", "MINHOOK-LICENSE.txt", "README.txt"]:
         src = (REPO / "kit" / f)
         if not src.exists():
             sys.exit(f"kit template missing: {src}")
