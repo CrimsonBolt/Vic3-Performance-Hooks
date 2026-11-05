@@ -1,4 +1,4 @@
-# vic3hook target table - game build 1.15.0 (rev 63385479)
+# vic3hook target table - game build 1.15.0
 # columns: hook_name<TAB>rva<TAB>prologue_hex(16 bytes)
 PrepareNavyAIData	0x01687a30	48895c240848896c2410488974241848
 UpdateBuildingSpendingPriorities_Stage2	0x01686c60	48895c240848896c2410488974241848

@@ -22,19 +22,45 @@ HOOKS = ["PrepareNavyAIData", "UpdateBuildingSpendingPriorities_Stage2",
          "UpdateAICountryGoalsAdjustments"]
 
 ROW = re.compile(r"^(\S+)\s+group [AB]\s+run rva (0x[0-9a-fA-F]+)\s+\{ ([0-9a-fxA-F, ]+) \}")
+# The resolver prints these two lines right after a hook's row when the vtable
+# slot holds an adjustor thunk pointing at the real run body.
+THUNK_RVA = re.compile(r"ADJUSTOR THUNK -> (0x[0-9a-fA-F]+)")
+THUNK_PRO = re.compile(r"thunk target prologue \{ ([0-9xA-Fa-f, ]+) \}")
+
+def _parse_pro(bytes_):
+    return bytes(int(b, 16) for b in bytes_.replace("0x", "").replace(" ", "").split(",") if b)
 
 def resolve(exe: Path):
     out = subprocess.run([sys.executable, str(REPO / "scripts" / "resolve_targets.py"), str(exe)],
                          capture_output=True, text=True, check=True).stdout
     rows = {}
+    cur = None                # hook whose block we are inside
+    pending_thunk_rva = None  # set by the ADJUSTOR THUNK line, consumed by the prologue line
     for line in out.splitlines():
         m = ROW.match(line)
-        if not m:
+        if m:
+            name, rva, bytes_ = m.group(1), int(m.group(2), 16), m.group(3)
+            pro = _parse_pro(bytes_)
+            if len(pro) >= 16:
+                rows[name] = (rva, pro[:16])   # first resolver row per name wins
+                cur = name
+                pending_thunk_rva = None
             continue
-        name, rva, bytes_ = m.group(1), int(m.group(2), 16), m.group(3)
-        pro = bytes(int(b, 16) for b in bytes_.replace("0x", "").replace(" ", "").split(",") if b)
-        if len(pro) >= 16:
-            rows[name] = (rva, pro[:16])   # first resolver row per name wins
+        if cur is None:
+            continue
+        mt = THUNK_RVA.search(line)
+        if mt:
+            pending_thunk_rva = int(mt.group(1), 16)
+            continue
+        mp = THUNK_PRO.search(line)
+        if mp and pending_thunk_rva is not None:
+            pro = _parse_pro(mp.group(1))
+            if len(pro) >= 16:
+                # Shipped convention (live-verified on 1.14.5): hook the thunk
+                # target, not the slot stub -- all call traffic passes through
+                # it either way, and the target has a real function body.
+                rows[cur] = (pending_thunk_rva, pro[:16])
+            pending_thunk_rva = None
     missing = [h for h in HOOKS if h not in rows]
     if missing:
         sys.exit(f"resolver did not produce a row for: {missing}")
