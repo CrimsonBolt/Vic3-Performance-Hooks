@@ -1,7 +1,7 @@
 # Vic3 Performance Hooks
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.13.11%20%2F%201.14.5-8e44ad.svg)](#building-from-source)
+[![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.13.11%20%2F%201.14.5%20%2F%201.15.0-8e44ad.svg)](#building-from-source)
 [![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#using-it)
 [![Download - Releases](https://img.shields.io/badge/download-GitHub%20Releases-brightgreen.svg)](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
 
@@ -14,6 +14,9 @@
 
 > [!IMPORTANT]
 > **When a task runs, it runs 100% unmodified.** No number is ever computed differently — some caches and AI decisions just refresh a few days later than vanilla.
+
+> [!NOTE]
+> **Victoria 3 1.15.0 support (BETA, release `1.15.0.1`):** 1.15.0 targets ship as a data file (the kit's `vic3hook.targets` sidecar) — same DLL as 1.14.5.6. The beta ships all eight hooks enabled: seven heavyweights every-2, RecalculateModifierNodes every-5. 1.13.11 / 1.14.5 stay supported through built-in candidate tables; on any other build every hook fails its byte check and you get pure vanilla speed.
 
 ---
 
