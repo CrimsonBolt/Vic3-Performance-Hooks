@@ -48,30 +48,26 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 - Every hook verifies the target function's bytes before patching; on any mismatch it **disables itself instead of patching** (fail closed).
 - If the game updates, the worst case is a vanilla-speed session and a log entry.
 
-**Shipped hooks** (each throttled to every other tick):
+**Shipped hooks** (the beta profile — all eight enabled):
 
-| Task | What it is |
-|---|---|
-| `UpdateBuildingSpendingPriorities_Stage2` | building spending priorities |
-| `HandleAutonomousInvestment` | AI autonomous investment |
-| `PrepareNavyAIData` | navy AI data prep |
-| `UpdateAI` | country AI update |
-| `UpdateSpendingVariables` | spending-variables refresh |
-
-`RecalculateModifierNodes` — the single biggest late-game cost — is **deliberately not throttled**: skipping it defers modifier invalidations, which silently breaks one-shot decisions (diplomatic deals that show 100% valid but never apply). Isolated and confirmed via same-save A/B testing; leave it at `0` in the ini.
-
-**Experimental hooks** (in the ini, shipped at `0` = vanilla — flip to `2` to try them):
-
-| Task | What it is | Why it's considered safe to skip |
+| Task | What it is | Beta cadence |
 |---|---|---|
-| `ProcessEconomicMigration` | pop migration processing | migration is a queue — a skipped day just delays it, nothing is lost |
-| `UpdateAICountryGoalsAdjustments` | AI country-goal adjustment | carries a progress cursor; a skipped call simply continues next time |
+| `UpdateAI` | country AI update | every 2nd tick |
+| `UpdateBuildingSpendingPriorities_Stage2` | building spending priorities | every 2nd tick |
+| `HandleAutonomousInvestment` | AI autonomous investment | every 2nd tick |
+| `PrepareNavyAIData` | navy AI data prep | every 2nd tick |
+| `UpdateSpendingVariables` | spending-variables refresh | every 2nd tick |
+| `ProcessEconomicMigration` | pop migration processing | every 2nd tick |
+| `UpdateAICountryGoalsAdjustments` | AI country-goal adjustment | every 2nd tick |
+| `RecalculateModifierNodes` | modifier-graph recalculation — the single biggest late-game cost | every 5th tick |
 
-Both were verified skip-safe by reading the engine code, not just by playtesting; expect roughly 1–2 ms/tick back late game at `every_n=2`.
+`RecalculateModifierNodes` gets the gentlest cadence (every 5th tick — proven across the 1.14.x sessions). A 2026-10-16 test blamed throttling it for one-shot diplomatic deals not applying; a later autopsy reproduced that deal failure with hooks completely disabled on a corrupted vanilla save and the finding was retracted. If deals ever misbehave on your setup, set it to `0` in the ini — instant passthrough, no restart.
+
+`ProcessEconomicMigration` and `UpdateAICountryGoalsAdjustments` are skip-safe by construction — reading the engine code showed migration is a queue (a skipped day just delays it, nothing is lost) and goal adjustments carry a progress cursor (a skipped call simply continues next time). Expect roughly 1–2 ms/tick back late game from the pair.
 
 **Engine switch** (ini, default `1` = game default): `render_frame_if_needed=0` applies Victoria 3's own `-disable_renderframeifneeded` launch-flag behavior (console cvar `GameStateTick.RenderFrameIfNeeded`) — sub-tick rendering is sacrificed for tick speed. Sim results are unaffected; the UI may feel less smooth at high speed. Takes effect on injection; setting it back to `1` needs a game restart.
 
-All throttled tasks run every tick in vanilla; the default profile throttles each to **every other tick** — the gentlest setting. More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
+All throttled tasks run every tick in vanilla; the default profile throttles them to **every other tick** (RecalculateModifierNodes to every 5th). More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
 
 **The weekly "vanilla day":** every 7th day, *all* throttled tasks run at full fidelity for that one day. The engine schedules some systems on fixed day-phases (every 4th day, monthly), and a fixed skip pattern can phase-lock against them — the vanilla day re-synchronizes everything, which keeps war resolution and AI construction behaving normally. Same-seed testing confirmed both the problem (wars could freeze under constant skipping) and the fix (zero freezes with the weekly resync, verified across decades). Tunable via `vanilla_day_every_n_days` in the ini.
 
