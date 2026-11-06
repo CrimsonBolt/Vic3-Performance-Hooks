@@ -81,7 +81,7 @@ All throttled tasks run every tick in vanilla; the default profile throttles the
 
 ## What to expect
 
-- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world develops differently than vanilla — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule. The weekly vanilla day keeps the differences mild at the default settings.
+- **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world develops differently than vanilla — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule. Over long campaigns the differences compound (measured over 90 years at the default cadences: the AI economy runs richer than vanilla, see [Results](#results)); the weekly vanilla day keeps day-phased systems synchronized within that.
 - **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
 - **Workshop mods:** this hooks the engine's tick tasks, not game data, so it should work alongside regular Workshop mods — but I haven't tested compatibility with any particular mod.
 
@@ -89,30 +89,34 @@ All throttled tasks run every tick in vanilla; the default profile throttles the
 
 ## Results
 
-Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick windows, patch 1.14.5). **Vanilla baseline** from one complete hands-off observer campaign, 1840–1930 — **hooked-run testing with the current cadences is in progress** and will be added.
+Milliseconds of simulation work per daily tick (the game's built-in profiler, 1,500-tick windows). Two hands-off observer campaigns on this machine, 1840-1930 each. The **1.15.0** pair shares one starting world: a vanilla boot to 1840, then the identical save continued twice, once vanilla and once with all 8 hooks active. The **1.14.5 vanilla** column is from its own campaign (different world), shown for patch context.
 
-| Year | Vanilla |
-|:---:|---:|
-| 1840 | 6.95 ms |
-| 1850 | 11.19 ms |
-| 1860 | 13.57 ms |
-| 1870 | 12.88 ms |
-| 1880 | 13.17 ms |
-| 1890 | 14.29 ms |
-| 1900 | 17.09 ms |
-| 1910 | 20.19 ms |
-| 1920 | 25.56 ms |
-| 1930 | **31.09 ms** |
+| Year | 1.15.0 vanilla | 1.15.0 + hooks | saved | 1.14.5 vanilla |
+|:---:|---:|---:|---:|---:|
+| 1840 | 11.08 ms | 11.08 ms | (shared start) | 6.95 ms |
+| 1850 | 15.38 ms | **8.96 ms** | **+41.8%** | 11.19 ms |
+| 1860 | 16.57 ms | 11.35 ms | +31.5% | 13.57 ms |
+| 1870 | 15.42 ms | 10.93 ms | +29.1% | 12.88 ms |
+| 1880 | 18.24 ms | 12.80 ms | +29.8% | 13.17 ms |
+| 1890 | 17.11 ms | 17.91 ms | -4.6% | 14.29 ms |
+| 1900 | 20.80 ms | 18.89 ms | +9.2% | 17.09 ms |
+| 1910 | 22.08 ms | 19.58 ms | +11.3% | 20.19 ms |
+| 1920 | 27.28 ms | 25.05 ms | +8.1% | 25.56 ms |
+| 1930 | 28.92 ms | 32.94 ms | -13.9% | 31.09 ms |
+
+> [!IMPORTANT]
+> **How to read the late rows.** Through 1880 the two saves are still near-identical (same seed, same starting world), so those rows show the throttle effect cleanly: **+29-42% less tick work**. From about 1890 the two runs are genuinely different worlds (see the economy note below) and total comparisons mix throttle effect with world size. The throttle itself never stops working: the eight hooked tasks cost **46-62% less** (1850-1880) and **23-34% less** (1890-1920) than the same tasks cost in the vanilla run, and per-tick spikes shrink with them.
 
 > [!NOTE]
-> **Vanilla more than quadruples over a campaign — the 1900s onward is where it compounds (+3, +5.4, +5.5 ms per decade).**
+> **Measured side effect over 90 years (default cadences): the AI economy runs richer under hooks.** By 1930 the hooked world shows **+11% world GDP, +11.5% building levels, +21% construction sectors, and a 3x larger investment pool** vs vanilla. Throttled AI investment spends each country's accumulation pool less often, so pools grow larger and fund more construction. If you have felt vanilla's AI under-builds, this pushes the other way. If you prefer strictly vanilla economic behavior, set `HandleAutonomousInvestment` to `0` in `vic3hook.ini` (hot-applies, no restart).
 
 ### Methodology
 
-- Hands-off **observer mode**, no player input, one continuous session per run
+- Hands-off **observer mode**, no player input; the 1.15.0 pair is one shared world (both arms continue from the identical 1840.1.1 save, one continuous session each)
 - **Medium** graphics settings, **FPS capped at 60**, maximum zoom-out level
 - Fixed **RNG seed** per campaign (so runs are reproducible and comparable)
-- Game version 1.14.5 (rev `9f8281a3`); measured with the game's own `dump_ticktask_timings` console command
+- Measured with the game's own `dump_ticktask_timings` console command; each decade window is the last ~1,500 daily ticks before the boundary
+- Game versions: 1.15.0 (rev `63385479`, campaign 2026-11-06/07) and 1.14.5 (rev `9f8281a3`, campaign 2026-10)
 - Test machine: AMD Ryzen 7 9800X3D (8C/16T), RTX 5070 Ti, 96 GB RAM, Windows 11
 
 ---
