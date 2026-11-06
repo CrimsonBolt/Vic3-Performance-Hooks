@@ -1,56 +1,62 @@
 # Vic3 Performance Hooks
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.13.11%20%2F%201.14.5%20%2F%201.15.0-8e44ad.svg)](#building-from-source)
-[![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#using-it)
+[![Game: Victoria 3](https://img.shields.io/badge/game-Victoria%203%201.13.11%20%2F%201.14.5%20%2F%201.15.0-8e44ad.svg)](#supported-game-versions)
+[![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-2ea44f.svg)](#quick-start)
 [![Download - Releases](https://img.shields.io/badge/download-GitHub%20Releases-brightgreen.svg)](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
 
 **Reclaim late-game simulation speed in Victoria 3** by letting a handful of expensive engine tick-tasks run every Nth call instead of every call — with no changes to game files and no changes to how the game computes anything.
 
 > [!TIP]
 > ### ➤ [Download the latest release here](https://github.com/CrimsonBolt/Vic3-Performance-Hooks/releases/latest)
-> Unzip it anywhere — no build, no setup. Then see [Using it](#using-it) for the 3-step usage.
+> Unzip it anywhere — no build, no setup. Then follow [Quick start](#quick-start) below.
 > The kit checks for updates automatically on every launch.
 
 > [!IMPORTANT]
 > **When a task runs, it runs 100% unmodified.** No number is ever computed differently — some caches and AI decisions just refresh a few days later than vanilla.
 
 > [!NOTE]
-> **Victoria 3 1.15.0 support (BETA, release `1.15.0.1`):** 1.15.0 targets ship as a data file (the kit's `vic3hook.targets` sidecar) — same DLL as 1.14.5.6. The beta ships all eight hooks enabled: seven heavyweights every-2, RecalculateModifierNodes every-5. 1.13.11 / 1.14.5 stay supported through built-in candidate tables; on any other build every hook fails its byte check and you get pure vanilla speed.
+> **Supported game versions:** Victoria 3 **1.15.0** ("Ivan-Chai", current release is a beta for it), **1.14.5** ("Ice Tea") and **1.13.11** ("Matcha"). After a game update the kit fails safe: nothing is patched and you simply stay at vanilla speed until an updated release lands.
 
 ---
 
 ## Contents
 
-- [How it works](#how-it-works)
-- [Gameplay impacts](#gameplay-impacts)
+- [Quick start](#quick-start)
+- [What it throttles](#what-it-throttles)
+- [What to expect](#what-to-expect)
 - [Results](#results)
 - [Using it](#using-it)
+- [Updating](#updating)
 - [Tuning](#tuning)
 - [Troubleshooting](#troubleshooting)
+- [Supported game versions](#supported-game-versions)
+- [Technical notes](#technical-notes)
 - [Building from source](#building-from-source)
 - [License](#license)
 
 ---
 
-## How it works
+## Quick start
 
-Victoria 3's daily simulation is a serial queue of ~266 named **tick tasks**. Profiling them with the game's own built-in console command (`dump_ticktask_timings`) shows a handful whose cost explodes as your country grows — one modifier-graph recalculation alone approaches 2.4 ms per tick by 1890.
+1. Unzip the release into a new folder — it can be placed anywhere.
+2. Start Victoria 3 through Steam as usual.
+3. **Load your save, then pause the game.**
+4. Double-click `INJECT HOOKS.cmd`, read the window, unpause and play.
 
-This project injects a small DLL that lets those tasks run on a slower cadence:
+> [!WARNING]
+> **Inject only while the game is loaded and paused.** Injecting while the game runs at speed can deadlock it during patching. If the game freezes right after injecting: close it via Task Manager, restart, and re-inject while paused.
 
-```text
-game tick ──► hooked task ──► skip?  ── yes ──► return (no work, no numbers touched)
-                          └── no  ──► original game code runs, unmodified
-```
+> [!NOTE]
+> **Going back to vanilla:** just don't run the script. Restarting the game also fully reverts.
 
-- The game executable is **never modified** — it's runtime injection.
-- Every hook verifies the target function's bytes before patching; on any mismatch it **disables itself instead of patching** (fail closed).
-- If the game updates, the worst case is a vanilla-speed session and a log entry.
+---
 
-**Shipped hooks** (the beta profile — all eight enabled):
+## What it throttles
 
-| Task | What it is | Beta cadence |
+The current release ships all eight hooks enabled at these cadences:
+
+| Task | What it is | Cadence |
 |---|---|---|
 | `UpdateAI` | country AI update | every 2nd tick |
 | `UpdateBuildingSpendingPriorities_Stage2` | building spending priorities | every 2nd tick |
@@ -61,19 +67,19 @@ game tick ──► hooked task ──► skip?  ── yes ──► return (no
 | `UpdateAICountryGoalsAdjustments` | AI country-goal adjustment | every 2nd tick |
 | `RecalculateModifierNodes` | modifier-graph recalculation — the single biggest late-game cost | every 5th tick |
 
-`RecalculateModifierNodes` gets the gentlest cadence (every 5th tick — proven across the 1.14.x sessions). A 2026-10-16 test blamed throttling it for one-shot diplomatic deals not applying; a later autopsy reproduced that deal failure with hooks completely disabled on a corrupted vanilla save and the finding was retracted. If deals ever misbehave on your setup, set it to `0` in the ini — instant passthrough, no restart.
+`RecalculateModifierNodes` gets the gentlest cadence, proven across long sessions on the previous patches. If diplomatic deals ever misbehave on your setup, set it to `0` in the ini — instant passthrough, no restart.
 
-`ProcessEconomicMigration` and `UpdateAICountryGoalsAdjustments` are skip-safe by construction — reading the engine code showed migration is a queue (a skipped day just delays it, nothing is lost) and goal adjustments carry a progress cursor (a skipped call simply continues next time). Expect roughly 1–2 ms/tick back late game from the pair.
-
-**Engine switch** (ini, default `1` = game default): `render_frame_if_needed=0` applies Victoria 3's own `-disable_renderframeifneeded` launch-flag behavior (console cvar `GameStateTick.RenderFrameIfNeeded`) — sub-tick rendering is sacrificed for tick speed. Sim results are unaffected; the UI may feel less smooth at high speed. Takes effect on injection; setting it back to `1` needs a game restart.
+`ProcessEconomicMigration` and `UpdateAICountryGoalsAdjustments` are safe to skip by design: migration is a queue (a skipped day just delays it, nothing is lost) and goal adjustments carry a progress cursor (a skipped call simply continues next time).
 
 All throttled tasks run every tick in vanilla; the default profile throttles them to **every other tick** (RecalculateModifierNodes to every 5th). More aggressive values in `vic3hook.ini` buy more speed at the cost of larger gameplay differences.
 
-**The weekly "vanilla day":** every 7th day, *all* throttled tasks run at full fidelity for that one day. The engine schedules some systems on fixed day-phases (every 4th day, monthly), and a fixed skip pattern can phase-lock against them — the vanilla day re-synchronizes everything, which keeps war resolution and AI construction behaving normally. Same-seed testing confirmed both the problem (wars could freeze under constant skipping) and the fix (zero freezes with the weekly resync, verified across decades). Tunable via `vanilla_day_every_n_days` in the ini.
+**The weekly "vanilla day":** every 7th day, *all* throttled tasks run at full fidelity for that one day. The engine schedules some systems on fixed day-phases, and a fixed skip pattern can phase-lock against them — the vanilla day re-synchronizes everything, which keeps war resolution and AI construction behaving normally.
+
+**Optional engine switch** (ini, default off): `render_frame_if_needed=0` trades a bit of frame smoothness for even faster ticks, same effect as the game's own `-disable_renderframeifneeded` launch flag. Simulation results are unaffected. Turning it back off needs a game restart.
 
 ---
 
-## Gameplay impacts
+## What to expect
 
 - **This isn't free perf.** Tasks that make decisions (AI updates, investments) run less often, so the world develops differently than vanilla — a war declared a few days later, factories built in a different order. Nothing is cheated; it's all the game's own code running on a slower schedule. The weekly vanilla day keeps the differences mild at the default settings.
 - **Single-player focused.** It's deterministic but not vanilla-identical, so multiplayer would need everyone on the same config. Treat it as single-player only.
@@ -113,7 +119,7 @@ Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick wi
 
 ## Using it
 
-**Requires:** Victoria 3 **1.14.5** (rev `9f8281a3`), Windows x64. Unzip the release into a new folder — it can be placed anywhere.
+**Requires:** Victoria 3 **1.15.0**, **1.14.5**, or **1.13.11**; Windows x64. See [Supported game versions](#supported-game-versions).
 
 1. Start Victoria 3 through Steam as usual.
 2. **Load your save, then pause the game.**
@@ -122,15 +128,9 @@ Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick wi
 
 | Message | Meaning |
 |---|---|
-| `N/M hooks installed` | Active — unpause and play on. (Shipped defaults: 5 of 8; the two experimental ones and `RecalculateModifierNodes` are disabled by config.) |
+| `N/M hooks installed` | Active — unpause and play on. (The current release ships all 8 enabled.) |
 | `WRONG GAME VERSION` | No hook matched the game build — nothing was patched, you're on pure vanilla. |
-| `PARTIAL VERSION MISMATCH` | Some hooks installed and are active, others failed their byte check — the game is **not** vanilla. Restart without injecting for pure vanilla. |
-
-> [!WARNING]
-> **Inject only while the game is loaded and paused.** Injecting while the game runs at speed can deadlock it during patching. If the game freezes right after injecting: close it via Task Manager, restart, and re-inject while paused.
-
-> [!NOTE]
-> **Going back to vanilla:** just don't run the script. Restarting the game also fully reverts.
+| `PARTIAL VERSION MISMATCH` | Some hooks installed and are active, others failed their check — the game is **not** vanilla. Restart without injecting for pure vanilla. |
 
 ## Updating
 
@@ -161,7 +161,7 @@ Open `vic3hook.ini` and set any task's `_every_n` value:
 `vanilla_day_every_n_days` controls the scheduled full-fidelity day (default `7` = once a week; `0` disables it). Don't disable it unless you know what you're trading away — it's what keeps day-phased AI systems in sync.
 
 > [!TIP]
-> Changes apply **within 5 seconds** while the game runs — no restart needed. Turning a hook on from `0` installs it live (byte-verified, same as at injection); turning one off (`N` → `0`) makes it pass through immediately.
+> Changes apply **within 5 seconds** while the game runs — no restart needed. Turning a hook on from `0` installs it live; turning one off (`N` → `0`) makes it pass through immediately.
 
 ---
 
@@ -169,6 +169,33 @@ Open `vic3hook.ini` and set any task's `_every_n` value:
 
 - **Game misbehaves after tuning** → set that task's `every_n=0` in the ini, or delete the folder — the game itself is never modified.
 - **Re-injecting after a game restart** → run `INJECT HOOKS.cmd` again (load save, pause, inject).
+
+---
+
+## Supported game versions
+
+- **Victoria 3 1.15.0 ("Ivan-Chai")** — supported since release `1.15.0.1` (beta). Live-tested with all eight hooks active; per-task timing measurements on this patch are still being gathered.
+- **Victoria 3 1.14.5 ("Ice Tea")** and **1.13.11 ("Matcha")** — fully supported.
+- Any other build: every hook's check fails and nothing is patched — you stay at vanilla speed, and the injector says so.
+
+---
+
+## Technical notes
+
+How it works, for the curious:
+
+- Victoria 3's daily simulation is a serial queue of ~266 named **tick tasks**. Profiling them with the game's own console command (`dump_ticktask_timings`) shows a handful whose cost explodes as your country grows — one modifier-graph recalculation alone approaches 2.4 ms per tick by 1890.
+- The kit injects a small DLL that lets those tasks run on a slower cadence:
+
+```text
+game tick ──► hooked task ──► skip?  ── yes ──► return (no work, no numbers touched)
+                          └── no  ──► original game code runs, unmodified
+```
+
+- The game executable is **never modified** — it's runtime injection.
+- Every hook verifies the target function's bytes before patching; on any mismatch it **disables itself instead of patching** (fail closed). If the game updates, the worst case is a vanilla-speed session and a log entry.
+- Per-version hook targets ship as a data file (`vic3hook.targets`, current builds) or as built-in candidate tables (1.14.5, 1.13.11). Each candidate is byte-checked before install; the first table whose checks pass wins.
+- History note on `RecalculateModifierNodes`: an early test once blamed throttling it for one-shot diplomatic deals not applying; a later autopsy reproduced that deal failure with hooks completely disabled on a corrupted vanilla save, and the finding was retracted. The mechanism-level concern (stale modifier data during a throttled window) is why it ships at the gentlest cadence and why the ini keeps a one-key route back to vanilla.
 
 ---
 
@@ -186,14 +213,14 @@ The build **assembles `kit\` automatically** (DLL + injector + ini + `INJECT HOO
 **Packaging for a game version:** drop the game's `victoria3.exe` anywhere and run
 
 ```bat
-python scripts\make_kit.py --game-version 1.13.11 --exe "<path>ictoria3.exe"
+python scripts\make_kit.py --game-version 1.15.0 --exe "<path>\victoria3.exe"
 ```
 
-It resolves the hook targets from that exe (RTTI walk), writes `targets/<version>.tsv`, and stamps `dist/vic3hook-<version>/` plus a release zip. The kit's `vic3hook.targets` sidecar is read by the DLL at injection — **supporting a new game version needs no rebuild**, only a new sidecar. (The DLL also carries built-in candidates for 1.14.5 and 1.13.11 as a fallback when the sidecar is missing.) Every candidate is prologue-verified before patching, fail-closed.
+It resolves the hook targets from that exe (RTTI walk), writes `targets/<version>.tsv`, and stamps `dist/vic3hook-<version>/` plus a release zip. The kit's `vic3hook.targets` sidecar is read by the DLL at injection — **supporting a new game version needs no rebuild**, only a new sidecar. (The DLL also carries built-in candidate tables for older versions as a fallback when the sidecar is missing.) Every candidate is prologue-verified before patching, fail-closed.
 
-**Releasing:** tag the release with the kit version (e.g. `1.14.5.7`) — the updater reads the version from the tag. Until every user is on the 1.14.5.6-or-later updater, **also upload `kit\version.txt` as a release asset** (older updaters look for it); once everyone has updated past this point the asset can be dropped.
+**Releasing:** tag the release with the kit version (e.g. `1.15.0.2`) — the updater reads the version from the tag, so releases carry the zip asset only. The kit's own `version.txt` (inside the zip) is what an installed kit reads its local version from.
 
-Targets are valid for **Victoria 3 1.14.5 only**. After a game update, re-derive the addresses and prologues, then update the table in `src\hooks.cpp`:
+Target tables are **per game version**. After a game update, re-derive the addresses and prologues from the new exe and ship the new table:
 
 ```bat
 python scripts\resolve_targets.py "<path-to>\victoria3.exe"
