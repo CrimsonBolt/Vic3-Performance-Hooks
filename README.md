@@ -128,9 +128,9 @@ Milliseconds of simulation work per daily tick (built-in profiler, 1,500-tick wi
 
 | Message | Meaning |
 |---|---|
-| `N/M hooks installed` | Active — unpause and play on. (The current release ships all 8 enabled.) |
+| `N/M hooks installed` | Active — unpause and play on. (The current release ships all 8 enabled. A note about skipped older-version candidate checks is normal on newer game builds.) |
 | `WRONG GAME VERSION` | No hook matched the game build — nothing was patched, you're on pure vanilla. |
-| `PARTIAL VERSION MISMATCH` | Some hooks installed and are active, others failed their check — the game is **not** vanilla. Restart without injecting for pure vanilla. |
+| `PARTIAL INSTALL` | Only some hooks have a working target on this game build — the throttling IS active, but the build may not be fully supported; please report it. |
 
 ## Updating
 

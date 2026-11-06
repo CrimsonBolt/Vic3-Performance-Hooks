@@ -199,43 +199,73 @@ if (-not $gameDead -and -not (Test-Path $log)) {
     Write-Output 'was patched; the game is running vanilla.'
 } elseif (Test-Path $log) {
     $lines = Get-Content $log
-    $mismatch = ($lines | Select-String 'prologue mismatch|outside the game image').Count
-    $installedCount = ($lines | Select-String 'INSTALLED at').Count
-    if ($mismatch -gt 0 -and $installedCount -eq 0) {
-        Write-Output 'vic3hook: WRONG GAME VERSION - every hook failed its byte'
-        Write-Output 'check and auto-disabled. Nothing was patched; the game is'
-        Write-Output 'running pure vanilla.'
-    } elseif ($mismatch -gt 0) {
-        Write-Output ("vic3hook: PARTIAL VERSION MISMATCH - {0} hook(s) installed and" -f $installedCount)
-        Write-Output ("ACTIVE, {0} failed the byte check and are disabled." -f $mismatch)
-        Write-Output 'The game is NOT vanilla: some throttling is active.'
-        Write-Output 'Restart without injecting for pure vanilla, or update the'
-        Write-Output 'hook table (see README: Building from source).'
+    # staleness guard: the DLL truncates this log only when it LOADS. If the
+    # init line is older than ~5 min, the DLL never loaded this session (AV
+    # block, arch mismatch) and every line below is from a previous run.
+    $logFresh = $false
+    $initLine = $lines | Select-String 'vic3hook init' | Select-Object -First 1
+    if ($initLine) {
+        try {
+            $stamp = [TimeSpan]::Parse($initLine.Line.Substring(1, 8))
+            $now = (Get-Date).TimeOfDay
+            $age = $now - $stamp
+            if ($age -lt 0) { $age += [TimeSpan]::FromHours(24) }
+            if ($age.TotalSeconds -lt 300) { $logFresh = $true }
+        } catch { $logFresh = $true }
+    }
+    if (-not $logFresh) {
+        Write-Output 'vic3hook: NO FRESH LOG WAS CREATED - the DLL failed to load inside'
+        Write-Output 'the game this session (architecture mismatch or antivirus block).'
+        Write-Output 'Nothing was patched; the game is running vanilla.'
+        if (-not $gameStuck -and -not $gameDead) {
+            Write-Output '(details: vic3hook.log next to this script)'
+        }
     } else {
-        # the DLL prints "hooks installed: N/M" only when the install
-        # finished; without that line the log is partial - do not trust it.
+        $mismatch = ($lines | Select-String 'prologue mismatch|outside the game image').Count
+        $installedCount = ($lines | Select-String 'INSTALLED at').Count
         $done = $lines | Select-String 'hooks installed: (\d+)/(\d+)'
         if ($done) {
+            # The completion line is authoritative. Older-version built-in
+            # candidates failing is EXPECTED when a newer game build is covered
+            # by the sidecar table: each hook tries its built-in candidates
+            # first, skips them on byte mismatch, then installs from the sidecar.
             $n = [int]$done.Matches[0].Groups[1].Value
             $total = [int]$done.Matches[0].Groups[2].Value
             $dis = ($lines | Select-String 'disabled \(every_n=0\)').Count
             $fail = ($lines | Select-String 'FAILED').Count
             if ($n -eq $total -and -not $gameStuck -and -not $gameDead) {
                 Write-Output ("vic3hook: {0}/{1} hooks installed. Have fun!" -f $n, $total)
+                if ($lines | Select-String 'sidecar targets' -SimpleMatch -Quiet) {
+                    Write-Output '(targets from the vic3hook.targets sidecar for this game build)'
+                }
+                if ($mismatch -gt 0) {
+                    Write-Output ("({0} older-version candidate checks were skipped -" -f $mismatch)
+                    Write-Output ' expected on a game build covered by the sidecar table.)'
+                }
             } elseif ($fail -gt 0) {
                 Write-Output ("vic3hook: {0}/{1} installed, {2} failed to patch" -f $n, $total, $fail)
                 Write-Output '(- see the log for which; game runs fine on the rest)'
-            } elseif ($n -eq 0) {
+            } elseif ($n -eq 0 -and $dis -eq $total) {
                 Write-Output 'vic3hook: all hooks disabled by config (every_n=0)'
                 Write-Output 'in vic3hook.ini - running pure vanilla.'
-            } elseif ($dis -gt 0) {
+            } elseif ($dis -gt 0 -and ($n + $dis) -eq $total) {
                 Write-Output ("vic3hook: {0}/{1} hooks installed, {2} disabled by" -f $n, $total, $dis)
                 Write-Output 'config (every_n=0 in vic3hook.ini). This is normal.'
+            } elseif ($n -lt $total) {
+                Write-Output ("vic3hook: PARTIAL INSTALL - only {0}/{1} hooks have a working" -f $n, $total)
+                Write-Output 'target on this game build. The throttling IS active, but this'
+                Write-Output 'build may not be fully supported - please report it.'
+            } else {
+                Write-Output ("vic3hook: {0}/{1} hooks installed." -f $n, $total)
             }
+        } elseif ($installedCount -eq 0 -and $mismatch -gt 0) {
+            Write-Output 'vic3hook: WRONG GAME VERSION - every hook failed its byte'
+            Write-Output 'check and auto-disabled. Nothing was patched; the game is'
+            Write-Output 'running pure vanilla.'
         } elseif (-not $gameDead -and -not $gameStuck) {
-            $last = ($lines | Select-String 'hook \d+/\d+' | Select-Object -Last 1)
             Write-Output 'vic3hook: install did NOT finish (no completion line in'
             Write-Output 'the log). Last attempted step:'
+            $last = ($lines | Select-String 'hook \d+/\d+' | Select-Object -Last 1)
             if ($last) { Write-Output ("    " + $last.Line.Trim()) } else { Write-Output '    (no hook step was reached - read the log)' }
             Write-Output 'The game may still run on the partial hooks - if anything'
             Write-Output 'behaves oddly, restart the game and inject while PAUSED.'
